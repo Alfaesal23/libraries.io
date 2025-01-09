@@ -17,7 +17,7 @@ class ProjectStatusQuery
       .visible
       .platform(@platform)
       .where(name: @requested_project_names)
-      .includes(:repository, :versions)
+      .includes(:repository)
       .find_each
       .index_by(&:name)
   end
@@ -27,7 +27,7 @@ class ProjectStatusQuery
       .visible
       .lower_platform(@platform)
       .where("lower(name) in (?)", missing_project_find_names.keys)
-      .includes(:repository, :versions)
+      .includes(:repository)
       .find_each
       .index_by { |project| missing_project_find_names[project.name.downcase] }
   end
@@ -35,10 +35,10 @@ class ProjectStatusQuery
   def missing_project_find_names
     @missing_project_find_names ||= (@requested_project_names - exact_projects.keys)
       .each_with_object({}) do |requested_name, hash|
-      platform_class
-        .project_find_names(requested_name)
-        .each { |find_name| hash[find_name.downcase] = requested_name }
-    end
+        platform_class
+          .project_find_names(requested_name)
+          .each { |find_name| hash[find_name.downcase] = requested_name }
+      end
   end
 
   def platform_class

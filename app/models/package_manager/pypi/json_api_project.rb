@@ -1,0 +1,169 @@
+# frozen_string_literal: true
+
+module PackageManager
+  class Pypi
+    class JsonApiProject
+      CLASSIFIER_INACTIVE = "Development Status :: 7 - Inactive"
+
+      def self.request(project_name:)
+        data = begin
+          ApiService.request_json_with_headers("https://pypi.org/pypi/#{project_name}/json")
+        rescue StandardError => e
+          Rails.logger.error("Invalid PyPI JSON API Project: #{project_name}: #{e.message}")
+
+          {}
+        end
+
+        if data.nil?
+          Rails.logger.error("Data is nil for JSON API Project: #{project_name}")
+
+          data = {}
+        end
+
+        new(data)
+      end
+
+      def initialize(data)
+        @data = data
+      end
+
+      def present?
+        !@data.empty?
+      end
+
+      def license
+        @data.dig("info", "license")
+      end
+
+      def license_classifiers
+        license_classifiers = classifiers.select { |c| c.start_with?("License :: ") }
+        license_classifiers.map { |l| l.split(":: ").last }.join(",")
+      end
+
+      def name
+        @data.dig("info", "name")
+      end
+
+      def description
+        @data.dig("info", "summary")
+      end
+
+      HOMEPAGE_PROJECT_URL_FIELDS = %w[Homepage Home HomePage].flat_map do |field|
+        [field, field.downcase]
+      end.uniq.freeze
+
+      def homepage
+        result = @data.dig("info", "home_page").presence
+        return result if result
+
+        HOMEPAGE_PROJECT_URL_FIELDS.filter_map do |field|
+          @data.dig("info", "project_urls", field).presence
+        end.first
+      end
+
+      def keywords_array
+        Array.wrap(@data.dig("info", "keywords").try(:split, /[\s.,]+/))
+      end
+
+      def licenses
+        license.presence || license_classifiers
+      end
+
+      REPOSITORY_PROJECT_URL_FIELDS = ["Source", "Source Code", "Repository", "Code", "GitHub", "Github"].flat_map do |field|
+        [field, field.downcase]
+      end.uniq.freeze
+
+      def repository_url
+        REPOSITORY_PROJECT_URL_FIELDS.filter_map do |field|
+          @data.dig("info", "project_urls", field).presence
+        end.first
+      end
+
+      def preferred_repository_url
+        RepositoryService.repo_fallback(
+          repository_url,
+          homepage
+        )
+      end
+
+      def releases
+        JsonApiProjectReleases.new(
+          @data["releases"].map do |version_number, details|
+            # this assumes that each file type distribution of the package/version has the same yanked status & reason
+            first_details = details.first || {}
+
+            JsonApiProjectRelease.new(
+              version_number: version_number,
+              published_at: release_data_published_at(details),
+              is_yanked: first_details["yanked"] == true,
+              yanked_reason: first_details["yanked_reason"]
+            )
+          end.sort
+        )
+      end
+
+      def deprecated?
+        deprecation_status[:is_deprecated]
+      end
+
+      def deprecation_message
+        deprecation_status[:message]
+      end
+
+      private
+
+      def classifiers
+        classifiers = @data.dig("info", "classifiers")
+
+        Rails.logger.error("PyPI JSON API classifiers missing: #{name}") unless classifiers
+
+        classifiers || []
+      end
+
+      def deprecation_status
+        return @deprecation_status if @deprecation_status
+
+        is_deprecated = false
+        message = nil
+
+        stable_releases = releases.reject(&:prerelease?)
+        latest_stable = stable_releases.last
+
+        # The VersionProcessor class is also inspecting yanked status
+        # on Releases. Make sure that the code here and in the VersionProcessor
+        # do not conflict.
+        # TODO: refactor this deprecation method to reuse the VersionProcessor status logic
+        if stable_releases.any? && stable_releases.all?(&:yanked?)
+          is_deprecated = true
+          message = latest_stable.yanked_reason
+        elsif classifiers.include?(CLASSIFIER_INACTIVE)
+          is_deprecated = true
+          message = CLASSIFIER_INACTIVE
+        end
+
+        @deprecation_status = {
+          is_deprecated: is_deprecated,
+          message: message,
+        }
+      end
+
+      def release_data_published_at(details)
+        return nil if details == []
+
+        upload_time = details.dig(0, "upload_time")
+        unless upload_time
+          Rails.logger.error("PyPI JSON API Project details does not contain upload_time: #{name} (#{upload_time})")
+          return nil
+        end
+
+        begin
+          Time.parse(upload_time)
+        rescue ArgumentError => e
+          Rails.logger.error("Unable to parse PyPI JSON API Project upload_time: #{name} (#{upload_time}): #{e.message}")
+
+          nil
+        end
+      end
+    end
+  end
+end

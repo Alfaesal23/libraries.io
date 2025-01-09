@@ -1,43 +1,61 @@
 # frozen_string_literal: true
+
 require "rails_helper"
 
 RSpec.describe ProjectsController do
-  let!(:project) { create(:project) }
+  let!(:project) { create(:project, platform: "Rubygems", name: "super_package") }
   let!(:version) { create(:version, project: project) }
   let!(:dependency) { create(:dependency, version: version) }
 
   describe "GET #index" do
     it "responds successfully", type: :request do
       visit root_path
-      expect(page).to have_content 'Libraries.io'
-    end
-  end
-
-  describe "GET #trending" do
-    it "responds successfully", type: :request do
-      visit trending_path
-      expect(page).to have_content 'Trending'
-    end
-
-    context "filtered by platform" do
-      it "responds successfully" do
-        visit trending_path(platform: 'Rubygems')
-        expect(page).to have_content 'Trending'
-      end
+      expect(page).to have_content "Libraries.io"
     end
   end
 
   describe "GET #show" do
+    before do
+      allow(AmplitudeService).to receive(:event)
+    end
+
     it "responds successfully", type: :request do
       visit project_path(project.to_param)
       expect(page).to have_content project.name
-    end
-  end
 
-  describe "GET #score" do
-    it "responds successfully", type: :request do
-      visit project_score_path(project.to_param)
-      expect(page).to have_content project.name
+      expect(AmplitudeService).to have_received(:event).with(
+        hash_including(
+          user: nil,
+          request_data: nil
+        )
+      )
+    end
+
+    context "with authenticated user" do
+      let(:user) { create(:user) }
+
+      it "logs to amplitude" do
+        login(user)
+        visit project_path(project.to_param)
+        expect(page).to have_content project.name
+
+        expect(AmplitudeService).to have_received(:event).with(
+          event_properties: {
+            action: "show",
+            controller: "projects",
+            lifted: false,
+            params: {
+              "name" => "super_package",
+              "platform" => "rubygems",
+            },
+            referrer_url: nil,
+            url: "http://www.example.com/rubygems/super_package",
+          },
+          event_type: "Page Viewed",
+          user: user,
+          request_data: nil
+        )
+      end
     end
   end
 
@@ -50,7 +68,7 @@ RSpec.describe ProjectsController do
 
   describe "GET #about" do
     it "responds successfully", type: :request do
-      visit project_path(project.to_param.merge(format: 'about'))
+      visit project_path(project.to_param.merge(format: "about"))
       expect(page).to have_content project.name
     end
   end

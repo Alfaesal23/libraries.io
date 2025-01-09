@@ -1,7 +1,8 @@
 # frozen_string_literal: true
+
 module RepositoryOwner
   class Gitlab < Base
-    def avatar_url(size = 60)
+    def avatar_url(_size = 60)
       "https://gitlab.com/uploads/user/avatar/#{owner.uuid}/avatar.png"
     end
 
@@ -10,10 +11,10 @@ module RepositoryOwner
     end
 
     def self.fetch_user(id_or_login)
-      if id_or_login.to_i.to_s != id_or_login.to_s
-        api_client.get("/users?username=#{id_or_login}").first
-      else
+      if id_or_login.to_i.to_s == id_or_login.to_s
         api_client.user(id_or_login)
+      else
+        api_client.get("/users?username=#{id_or_login}").first
       end
     rescue *RepositoryHost::Gitlab::IGNORABLE_EXCEPTIONS
       nil
@@ -26,7 +27,7 @@ module RepositoryOwner
     end
 
     def self.api_client(token = nil)
-      ::Gitlab.client(endpoint: 'https://gitlab.com/api/v4', private_token: token || ENV['GITLAB_KEY'])
+      ::Gitlab.client(endpoint: "https://gitlab.com/api/v4", private_token: token || Rails.configuration.gitlab_key)
     end
 
     def api_client(token = nil)
@@ -40,12 +41,14 @@ module RepositoryOwner
       json = get_json("https://gitlab.com/users/#{owner.login}/groups")
 
       return if json.nil?
-      groups_html = Nokogiri::HTML(json['html'])
+
+      groups_html = Nokogiri::HTML(json["html"])
       return if groups_html.nil?
-      links = groups_html.css('a.group-name').map{|l| l['href'][1..-1]}.compact
+
+      links = groups_html.css("a.group-name").map { |l| l["href"][1..] }.compact
 
       links.each do |org_login|
-        RepositoryCreateOrgWorker.perform_async('GitLab', org_login)
+        RepositoryCreateOrgWorker.perform_async("GitLab", org_login)
       end
       true
     rescue *RepositoryHost::Gitlab::IGNORABLE_EXCEPTIONS
@@ -60,13 +63,15 @@ module RepositoryOwner
         json = get_json("https://gitlab.com/users/#{owner.login}/projects")
 
         return if json.nil?
-        projects_html = Nokogiri::HTML(json['html'])
+
+        projects_html = Nokogiri::HTML(json["html"])
         return if projects_html.nil?
-        repos = projects_html.css('a.project').map{|l| l['href'][1..-1] }.uniq.compact
+
+        repos = projects_html.css("a.project").map { |l| l["href"][1..] }.uniq.compact
       end
 
       repos.each do |repo_name|
-        CreateRepositoryWorker.perform_async('GitLab', repo_name)
+        CreateRepositoryWorker.perform_async("GitLab", repo_name)
       end
       true
     rescue *RepositoryHost::Gitlab::IGNORABLE_EXCEPTIONS
@@ -77,7 +82,7 @@ module RepositoryOwner
       return unless owner.org?
 
       api_client.group_members(owner.login).each do |org|
-        RepositoryCreateUserWorker.perform_async('GitLab', org.username)
+        RepositoryCreateUserWorker.perform_async("GitLab", org.username)
       end
       true
     rescue *RepositoryHost::Gitlab::IGNORABLE_EXCEPTIONS
@@ -86,7 +91,9 @@ module RepositoryOwner
 
     def self.create_user(user_hash)
       return if user_hash.nil?
-      user_hash = user_hash.to_hash.with_indifferent_access
+
+      user_hash = sanitized_hash_with_indifferent_access_from_client_response(user_hash)
+
       user_hash = {
         id: user_hash[:id],
         login: user_hash[:username],
@@ -94,33 +101,27 @@ module RepositoryOwner
         blog: user_hash[:website_url],
         location: user_hash[:location],
         bio: user_hash[:bio],
-        type: 'User',
-        host_type: 'GitLab'
+        type: "User",
+        host_type: "GitLab",
       }
       user = nil
-      user_by_id = RepositoryUser.where(host_type: 'GitLab').find_by_uuid(user_hash[:id])
-      user_by_login = RepositoryUser.host('GitLab').login(user_hash[:login]).first
+      user_by_id = RepositoryUser.where(host_type: "GitLab").find_by_uuid(user_hash[:id])
+      user_by_login = RepositoryUser.host("GitLab").login(user_hash[:login]).first
       if user_by_id # its fine
-        if user_by_id.login.try(:downcase) == user_hash[:login].downcase && user_by_id.user_type == user_hash[:type]
-          user = user_by_id
-        else
-          if user_by_login && !user_by_login.download_user_from_host
-            user_by_login.destroy
-          end
+        if user_by_id.login.try(:downcase) != user_hash[:login].downcase || user_by_id.user_type != user_hash[:type]
+          # If the login has changed, and the new login is taken, destroy the existing record (bc the accounts might have swapped).
+          # If the user that used to have this login really exists, it should get re-synced in Repsitory#download_owner eventually.
+          user_by_login.destroy if user_by_login && user_by_login != user_by_id
           user_by_id.login = user_hash[:login]
           user_by_id.user_type = user_hash[:type]
           user_by_id.save!
-          user = user_by_id
         end
+        user = user_by_id
       elsif user_by_login # conflict
-        if fetch_user(user_by_login.login)
-          user = user_by_login if user_by_login.uuid == user_hash[:id]
-        end
+        user = user_by_login if fetch_user(user_by_login.login) && (user_by_login.uuid == user_hash[:id])
         user_by_login.destroy if user.nil?
       end
-      if user.nil?
-        user = RepositoryUser.create!(uuid: user_hash[:id], login: user_hash[:login], user_type: user_hash[:type], host_type: 'GitLab')
-      end
+      user = RepositoryUser.create!(uuid: user_hash[:id], login: user_hash[:login], user_type: user_hash[:type], host_type: "GitLab") if user.nil?
 
       user.update(user_hash.slice(:name, :blog, :location))
       user
@@ -128,7 +129,9 @@ module RepositoryOwner
 
     def self.create_org(org_hash)
       return if org_hash.nil?
-      org_hash = org_hash.to_hash.with_indifferent_access
+
+      org_hash = sanitized_hash_with_indifferent_access_from_client_response(org_hash)
+
       org_hash = {
         id: org_hash[:id],
         login: org_hash[:path],
@@ -136,32 +139,26 @@ module RepositoryOwner
         blog: org_hash[:website_url],
         location: org_hash[:location],
         bio: org_hash[:bio],
-        type: 'Organisation',
-        host_type: 'GitLab'
+        type: "Organisation",
+        host_type: "GitLab",
       }
       org = nil
-      org_by_id = RepositoryOrganisation.where(host_type: 'GitLab').find_by_uuid(org_hash[:id])
-      org_by_login = RepositoryOrganisation.host('GitLab').login(org_hash[:login]).first
+      org_by_id = RepositoryOrganisation.where(host_type: "GitLab").find_by_uuid(org_hash[:id])
+      org_by_login = RepositoryOrganisation.host("GitLab").login(org_hash[:login]).first
       if org_by_id # its fine
-        if org_by_id.login.try(:downcase) == org_hash[:login].downcase
-          org = org_by_id
-        else
-          if org_by_login && !org_by_login.download_org_from_host
-            org_by_login.destroy
-          end
+        if org_by_id.login.try(:downcase) != org_hash[:login].downcase
+          # If the login has changed, and the new login is taken, destroy the existing record (bc the accounts might have swapped).
+          # If the org that used to have this login really exists, it should get re-synced in Repsitory#download_owner eventually.
+          org_by_login.destroy if org_by_login && org_by_login != org_by_id
           org_by_id.login = org_hash[:login]
           org_by_id.save!
-          org = org_by_id
         end
+        org = org_by_id
       elsif org_by_login # conflict
-        if fetch_org(org_by_login.login)
-          org = org_by_login if org_by_login.uuid == org_hash[:id]
-        end
+        org = org_by_login if fetch_org(org_by_login.login) && (org_by_login.uuid == org_hash[:id])
         org_by_login.destroy if org.nil?
       end
-      if org.nil?
-        org = RepositoryOrganisation.create!(uuid: org_hash[:id], login: org_hash[:login], host_type: 'GitLab')
-      end
+      org = RepositoryOrganisation.create!(uuid: org_hash[:id], login: org_hash[:login], host_type: "GitLab") if org.nil?
 
       org.update(org_hash.slice(:name, :blog, :location))
       org
@@ -170,10 +167,7 @@ module RepositoryOwner
     private
 
     def get_json(url)
-      r = Typhoeus::Request.new(url,
-        method: :get,
-        headers: { 'Accept' => 'application/json' }).run
-      Oj.load(r.body)
+      PackageManager::ApiService.request_json_with_headers(url)
     end
   end
 end

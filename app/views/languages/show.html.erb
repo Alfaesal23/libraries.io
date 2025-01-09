@@ -1,4 +1,4 @@
-<% title "#{@language} - Libraries.io" %>
+<% title "#{@language}" %>
 <% description "A detailed listing of the most popular, recently updated and most watched #{@language} packages online" %>
 <% content_for :atom, auto_discovery_link_tag(:atom, search_url(languages: @language, sort: 'latest_release_published_at', order: 'desc', format: :atom), title: "Updated #{@language} Packages") %>
 <% content_for :atom, auto_discovery_link_tag(:atom, search_url(languages: @language, sort: 'created_at', order: 'desc', format: :atom), title: "New #{@language} Packages") %>
@@ -88,16 +88,6 @@
             Top <%= @language %> Package Managers
           </h4>
           <%= render partial: 'platforms/list_platform', collection: @platforms, as: :platform %>
-        </div>
-      <% end %>
-
-      <% if @keywords.many? %>
-        <div class='col-md-12 col-sm-4'>
-          <h4>
-            <%= fa_icon 'tags' %>
-            Top <%= @language %> Keywords
-          </h4>
-          <%= render partial: 'keywords/list_keyword', collection: @keywords, as: :keyword %>
         </div>
       <% end %>
     </div>

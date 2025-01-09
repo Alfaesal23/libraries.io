@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module MaintenanceStats
   module Stats
     module Github
@@ -7,7 +9,7 @@ module MaintenanceStats
           @now = DateTime.current
         end
 
-        def get_stats
+        def fetch_stats
           return {} if @results.nil?
 
           {
@@ -30,33 +32,35 @@ module MaintenanceStats
         end
 
         def closed_issues_count
-          @closed_issues_count ||= @results.original_hash.dig("data", "repository", "closedIssues", "totalCount") || 0
+          @closed_issues_count ||= @results.dig_data("repository", "closedIssues", "totalCount") || 0
         end
 
         def open_issues_count
-          @open_issues_count ||= @results.original_hash.dig("data", "repository", "openIssues", "totalCount") || 0
+          @open_issues_count ||= @results.dig_data("repository", "openIssues", "totalCount") || 0
         end
 
         def issue_closure_rate
           return 1.0 if total_issues_count == 0
-          closed_issues_count.to_f / total_issues_count.to_f
+
+          closed_issues_count.to_f / total_issues_count
         end
 
         def total_pull_request_count
-          return open_pull_request_count + closed_pull_request_count
+          open_pull_request_count + closed_pull_request_count
         end
 
         def closed_pull_request_count
-          @closed_pull_request_count ||= @results.original_hash.dig("data", "closedPullRequests", "issueCount") || 0
+          @closed_pull_request_count ||= @results.dig_data("closedPullRequests", "issueCount") || 0
         end
 
         def open_pull_request_count
-          @open_pull_request_count ||= @results.original_hash.dig("data", "openPullRequests", "issueCount") || 0
+          @open_pull_request_count ||= @results.dig_data("openPullRequests", "issueCount") || 0
         end
 
         def pull_request_closure_rate
           return 1.0 if total_pull_request_count == 0
-          closed_pull_request_count.to_f / total_pull_request_count.to_f
+
+          closed_pull_request_count.to_f / total_pull_request_count
         end
       end
     end

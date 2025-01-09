@@ -4,7 +4,6 @@ module PackageManager
   class Elm < Base
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
-    BIBLIOTHECARY_SUPPORT = true
     URL = "http://package.elm-lang.org/"
     COLOR = "#60B5CC"
 
@@ -37,30 +36,30 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      {
+      MappingBuilder.build_hash(
         name: raw_project["name"],
         description: raw_project["summary"],
-        repository_url: "https://github.com/#{raw_project['name']}",
-      }
+        repository_url: "https://github.com/#{raw_project['name']}"
+      )
     end
 
     def self.versions(_raw_project, name)
       get("https://package.elm-lang.org/packages/#{name}/releases.json")
         .map do |version, timestamp|
-          {
+          VersionBuilder.build_hash(
             number: version,
-            published_at: Time.at(timestamp),
-          }
+            published_at: Time.at(timestamp)
+          )
         end
     end
 
     def self.dependencies(name, version, _mapped_project)
       get("http://package.elm-lang.org/packages/#{name}/#{version}/elm.json")
         .fetch("dependencies", {})
-        .map do |name, requirement|
+        .map do |response_name, response_requirement|
           {
-            project_name: name,
-            requirements: requirement,
+            project_name: response_name,
+            requirements: response_requirement,
             kind: "runtime",
             platform: self.name.demodulize,
           }

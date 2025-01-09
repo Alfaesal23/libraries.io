@@ -1,15 +1,16 @@
 # frozen_string_literal: true
+
 module MaintenanceStats
   module Queries
     module Github
       class CommitCountQuery < BaseQuery
-        COMMIT_COUNTS_QUERY = Rails.application.config.graphql.client.parse <<-GRAPHQL
+        COMMIT_COUNTS_QUERY = GithubGraphql.parse_query <<-GRAPHQL
           query ($owner: String!, $repo_name: String!, $one_week: GitTimestamp!, $one_month: GitTimestamp!, $two_months: GitTimestamp!, $one_year: GitTimestamp!) {
             repository(owner: $owner, name: $repo_name) {
               defaultBranchRef {
                 target {
                   ... on Commit {
-                    latestCommit: history(first: 1){
+                    latestCommit: history(first: 10){
                       nodes {
                         committedDate
                       }
@@ -34,8 +35,8 @@ module MaintenanceStats
           }
         GRAPHQL
 
-        VALID_PARAMS = [:owner, :repo_name, :start_date]
-        REQUIRED_PARAMS = [:owner, :repo_name, :start_date]
+        VALID_PARAMS = %i[owner repo_name start_date].freeze
+        REQUIRED_PARAMS = %i[owner repo_name start_date].freeze
 
         def self.client_type
           :v4
@@ -55,14 +56,18 @@ module MaintenanceStats
 
           # merge params for query
           date_params.merge!(params.slice(:owner, :repo_name))
+          full_name = "#{params[:owner]}/#{params[:repo_name]}"
 
-          @client.query(COMMIT_COUNTS_QUERY, variables: date_params)
+          results = @client.query(COMMIT_COUNTS_QUERY, variables: date_params)
+          QueryUtils.check_for_graphql_errors(results, full_name)
+
+          results
         end
       end
 
       class CommitCountQueryV3 < BaseQuery
-        VALID_PARAMS = [:full_name]
-        REQUIRED_PARAMS = [:full_name]
+        VALID_PARAMS = [:full_name].freeze
+        REQUIRED_PARAMS = [:full_name].freeze
 
         def self.client_type
           :v3
