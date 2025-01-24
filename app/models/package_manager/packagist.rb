@@ -5,19 +5,16 @@ module PackageManager
     REPOSITORY_SOURCE_NAME = "Main"
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
-    BIBLIOTHECARY_SUPPORT = true
-    SECURITY_PLANNED = true
     URL = "https://packagist.org"
     COLOR = "#4F5D95"
     ENTIRE_PACKAGE_CAN_BE_DEPRECATED = true
 
     # TODO: rename PackageManager::Packagist -> PackageManager::Composer, and then  PackageManager::Packagist::Main => PackageManager::Composer::Packagist
-    PROVIDER_MAP = {
-      "default" => Main,
-      "Drupal" => Drupal,
-      "Main" => Main,
-      "Packagist" => Main,
-    }.freeze
+    PROVIDER_MAP = ProviderMap.new(prioritized_provider_infos: [
+      ProviderInfo.new(identifier: "Main", default: true, provider_class: Main),
+      ProviderInfo.new(identifier: "Packagist", provider_class: Main),
+      ProviderInfo.new(identifier: "Drupal", provider_class: Drupal),
+    ])
 
     def self.formatted_name
       "Packagist"
@@ -48,16 +45,18 @@ module PackageManager
       updated = SimpleRSS.parse(get_raw(u)).items.map(&:title)
       u = "https://packagist.org/feeds/packages.rss"
       new_packages = SimpleRSS.parse(get_raw(u)).items.map(&:title)
-      (updated.map { |t| t.split(" ").first } + new_packages).uniq
+      (updated.map { |t| t.split.first } + new_packages).uniq
     end
 
     def self.project(name)
-      get("https://packagist.org/packages/#{name}.json")
-        &.fetch("package")
+      # The main v2 endpoint only returns a list of versions (no single source-of-truth for the project)
+      # and excludes dev versions, so if that list of versions is empty, fallback to the dev list of versions.
+      get("https://repo.packagist.org/p2/#{name}.json")&.dig("packages", name).presence ||
+        get("https://repo.packagist.org/p2/#{name}~dev.json")&.dig("packages", name)
     end
 
-    def self.deprecation_info(name)
-      is_deprecated = project(name).dig("abandoned") || ""
+    def self.deprecation_info(db_project)
+      is_deprecated = project(db_project.name)&.first&.dig("abandoned") || ""
 
       {
         is_deprecated: is_deprecated != "",
@@ -66,50 +65,48 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      return nil unless raw_project["versions"].any?
+      # In V2 API, it looks like the first version is the one with all the metadata (name, etc)
+      # (This might not necessarily be the version with the highest "time" value)
+      latest_version = if raw_project.any?
+                         raw_project.first
+                       else
+                         {}
+                       end
 
-      # for version comparison of php, we want to reject any dev versions unless
-      # there are only dev versions of the project
-      versions = raw_project["versions"].values.reject { |v| v["version"].include? "dev" }
-      versions = raw_project["versions"].values if versions.empty?
-      # then we'll use the most recently published as our most recent version
-      latest_version = versions.max_by { |v| v["time"] }
-      {
+      MappingBuilder.build_hash(
         name: latest_version["name"],
         description: latest_version["description"],
-        homepage: latest_version["home_page"],
+        homepage: latest_version["homepage"],
         keywords_array: Array.wrap(latest_version["keywords"]),
-        licenses: latest_version["license"].join(","),
-        repository_url: repo_fallback(raw_project["repository"], latest_version["home_page"]),
-      }
+        licenses: latest_version["license"]&.join(","),
+        repository_url: repo_fallback(latest_version["source"]&.fetch("url"), latest_version["homepage"]),
+        versions: raw_project # packagist has the list of versions as raw_project and this then lets us pull dependencies in self.dependencies
+      )
     end
 
-    def self.versions(_raw_project, name)
-      # TODO: Use composer v2 and unminify data https://packagist.org/apidoc
-      versions = get("https://repo.packagist.org/p/#{name}.json")&.dig("packages", name) || []
-
-      acceptable_versions(versions).map do |number, version|
-        {
-          number: number,
+    def self.versions(raw_project, _name)
+      acceptable_versions(raw_project).map do |version|
+        VersionBuilder.build_hash(
+          number: version["version"],
           published_at: version["time"],
-          original_license: version["license"],
-        }
+          original_license: version["license"]
+        )
       end
     end
 
     def self.acceptable_versions(versions)
-      versions.select do |k, _v|
+      versions.select do |v|
         # See: https://getcomposer.org/doc/articles/versions.md#branches
-        (k =~ /^dev-.*/i).nil? && (k =~ /\.x-dev$/i).nil?
+        (v["version"] =~ /^dev-.*/i).nil? && (v["version"] =~ /\.x-dev$/i).nil?
       end
     end
 
     def self.dependencies(_name, version, mapped_project)
-      vers = mapped_project[:versions][version]
+      vers = mapped_project[:versions].find { |v| v["version"] == version }
       return [] if vers.nil?
 
-      map_dependencies(vers.fetch("require", {}).reject { |k, _v| k == "php" }, "runtime") +
-        map_dependencies(vers.fetch("require-dev", {}).reject { |k, _v| k == "php" }, "Development")
+      map_dependencies(vers.fetch("require", {}).except("php"), "runtime") +
+        map_dependencies(vers.fetch("require-dev", {}).except("php"), "Development")
     end
   end
 end

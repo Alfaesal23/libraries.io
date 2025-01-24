@@ -1,7 +1,9 @@
 # frozen_string_literal: true
-require 'pry'
-require 'simplecov'
-SimpleCov.start 'rails'
+
+require "simplecov"
+require "custom_matchers"
+require "audited/rspec_matchers"
+SimpleCov.start "rails"
 
 RSpec.configure do |config|
   config.expect_with :rspec do |expectations|
@@ -12,21 +14,24 @@ RSpec.configure do |config|
     mocks.verify_partial_doubles = true
   end
 
-  config.before :all do
-    Scenic.database.refresh_materialized_view('project_dependent_repositories', concurrently: false, cascade: false)
-  end
-
   config.around :each, elasticsearch: true do |example|
-    [Project, Repository].each do |model|
-      model.__elasticsearch__.create_index!(force: true)
-      model.__elasticsearch__.import force: true
+    [Project].each do |model|
+      model.__elasticsearch__.create_index!({ force: true })
+      model.__elasticsearch__.import({ force: true })
     end
     example.run
-    [Project, Repository].each do |model|
+    [Project].each do |model|
       model.__elasticsearch__.client.indices.delete index: model.index_name
     end
   end
 
+  config.before do
+    Current.clear_all
+  end
+
   config.filter_run :focus
   config.run_all_when_everything_filtered = true
+
+  config.include(CustomMatchers)
+  config.include(Audited::RspecMatchers)
 end

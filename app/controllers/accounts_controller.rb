@@ -1,10 +1,9 @@
 # frozen_string_literal: true
+
 class AccountsController < ApplicationController
   before_action :ensure_logged_in
 
-  def show
-
-  end
+  def show; end
 
   def optin
     current_user.update(optin: true)
@@ -14,7 +13,14 @@ class AccountsController < ApplicationController
 
   def update
     if current_user.update(user_params)
-      redirect_to account_path, notice: 'Preferences updated'
+      AmplitudeService.event(
+        event_type: AmplitudeService::EVENTS[:account_updated],
+        event_properties: user_params.to_h,
+        user: current_user,
+        request_data: @amplitude_request_data
+      )
+
+      redirect_to account_path, notice: "Preferences updated"
     else
       flash.now[:error] = "Couldn't update your email address"
       render action: :show
@@ -22,6 +28,13 @@ class AccountsController < ApplicationController
   end
 
   def destroy
+    AmplitudeService.event(
+      event_type: AmplitudeService::EVENTS[:account_deleted],
+      event_properties: user_params.to_h,
+      user: current_user,
+      request_data: @amplitude_request_data
+    )
+
     current_user.destroy
     session.delete(:user_id)
     flash[:notice] = "Account deleted, we're sorry to see you go :'("

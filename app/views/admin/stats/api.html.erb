@@ -1,5 +1,5 @@
 <%= render 'admin/nav' %>
-<% title 'API Usage - Libraries.io' %>
+<% title 'API Usage' %>
 <h1>
   API Usage for <%= Date.today.strftime("%B %Y") %>
 </h1>
@@ -19,7 +19,7 @@
           <%= api_key.user.email %>
         </td>
         <td>
-          <%= api_key.user.created_at.to_s(:long) %>
+          <%= api_key.user.created_at.to_fs(:long) %>
         </td>
         <td>
           <%= api_key.user.last_login_at.try(:to_s, :long) %>

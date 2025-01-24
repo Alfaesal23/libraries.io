@@ -4,7 +4,6 @@ module PackageManager
   class Dub < Base
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
-    BIBLIOTHECARY_SUPPORT = true
     URL = "http://code.dlang.org"
     COLOR = "#ba595e"
 
@@ -26,22 +25,23 @@ module PackageManager
 
     def self.mapping(raw_project)
       latest_version = raw_project["versions"].last
-      {
+      MappingBuilder.build_hash(
         name: raw_project["name"],
         description: latest_version["description"],
         homepage: latest_version["homepage"],
         keywords_array: format_keywords(raw_project["categories"]),
         licenses: latest_version["license"],
         repository_url: repo_fallback(repository(raw_project["repository"]), latest_version["homepage"]),
-      }
+        versions: raw_project["versions"]
+      )
     end
 
     def self.versions(raw_project, _name)
       acceptable_versions(raw_project).map do |v|
-        {
+        VersionBuilder.build_hash(
           number: v["version"],
-          published_at: v["date"],
-        }
+          published_at: v["date"]
+        )
       end
     end
 
@@ -52,9 +52,10 @@ module PackageManager
     end
 
     def self.repository(hash)
-      if hash["kind"] == "github"
+      case hash["kind"]
+      when "github"
         "https://github.com/#{hash['owner']}/#{hash['project']}"
-      elsif hash["kind"] == "bitbucket"
+      when "bitbucket"
         "https://bitbucket.org/#{hash['owner']}/#{hash['project']}"
       else
         ""

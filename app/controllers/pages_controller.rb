@@ -1,31 +1,13 @@
 # frozen_string_literal: true
+
 class PagesController < ApplicationController
-  def about
+  def about; end
 
-  end
+  def team; end
 
-  def team
+  def privacy; end
 
-  end
+  def compatibility; end
 
-  def privacy
-
-  end
-
-  def compatibility
-
-  end
-
-  def data
-    @platforms = Project.popular_platforms(facet_limit: 40).first(28)
-  end
-
-  def terms
-
-  end
-
-  def terms
-
-  end
-
+  def terms; end
 end

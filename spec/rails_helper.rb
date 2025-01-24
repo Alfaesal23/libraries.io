@@ -8,7 +8,9 @@ require "spec_helper"
 require "rspec/rails"
 require "webmock/rspec"
 
-Dir[Rails.root.join("spec/support/**/*.rb")].sort.each { |f| require f }
+Rails.application.load_tasks
+
+Dir[Rails.root.join("spec/support/**/*.rb")].each { |f| require f }
 
 ActiveRecord::Migration.maintain_test_schema!
 
@@ -28,14 +30,6 @@ VCR.configure do |config|
   }
 end
 
-require "capybara/poltergeist"
-Capybara.javascript_driver = :poltergeist
-Capybara.default_max_wait_time = 10
-
-Capybara.register_driver :poltergeist do |app|
-  Capybara::Poltergeist::Driver.new(app, window_size: [1280, 600])
-end
-
 OmniAuth.config.test_mode = true
 
 RSpec.configure do |config|
@@ -45,7 +39,7 @@ RSpec.configure do |config|
 end
 
 def project_json_response(projects)
-  projects.as_json(only: Project::API_FIELDS, methods: %i[package_manager_url stars forks keywords latest_download_url repository_license], include: { versions: { only: %i[number published_at original_license spdx_expression researched_at repository_sources] } })
+  projects.as_json(only: Project::API_FIELDS, methods: %i[code_of_conduct_url contributions_count contribution_guidelines_url funding_urls package_manager_url security_policy_url stars forks keywords latest_download_url repository_license repository_status], include: { versions: { only: %i[number published_at original_license spdx_expression researched_at repository_sources] } })
 end
 
 RSpec::Sidekiq.configure do |config|
@@ -57,4 +51,9 @@ Shoulda::Matchers.configure do |config|
     with.test_framework :rspec
     with.library :rails
   end
+end
+
+# fake Bugsnag for testing
+class Bugsnag
+  def self.notify(*); end
 end

@@ -1,11 +1,14 @@
 version: 2.1
 orbs:
-  ruby: circleci/ruby@0.1.2
+  ruby: circleci/ruby@2.3.1
 
 executors:
+  # TODO: we don't need ES/PG/Redis for "lint" job, so we could create another
+  # stripped-down executor if we want?
   libraries:
+    working_directory: ~/libraries
     docker:
-      - image: circleci/ruby:2.6.5-stretch-node
+      - image: cimg/ruby:3.2-node
         environment:
           PGHOST: 127.0.0.1
           PGUSER: postgres
@@ -14,54 +17,58 @@ executors:
           POSTGRES_USER: postgres
           POSTGRES_DB: libraries_test
           POSTGRES_PASSWORD: ""
-      - image: redis:3.2-alpine
+      - image: redis:7.0-alpine
       - image: elasticsearch:2.4.4
         environment:
           - cluster.name: elasticsearch
           - action.auto_create_index: true
+
 jobs:
-  build:
+  install:
     executor: libraries
     steps:
       - checkout
-      - restore_cache:
-          keys:
-            # when lock file changes, use increasingly general patterns to restore cache
-            - v1-gem-cache-{{ arch }}-{{ .Branch }}-{{ checksum "Gemfile.lock" }}
-            - v1-gem-cache-{{ arch }}-{{ .Branch }}-
-            - v1-gem-cache-{{ arch }}-
-      - run: sudo apt-get -y -qq update
-      - run: sudo apt-get -y --no-install-recommends install cmake libpq-dev
-      - ruby/bundle-install
-      - save_cache:
-          key: v1-gem-cache-{{ arch }}-{{ .Branch }}-{{ checksum "Gemfile.lock" }}
+      # This CI config relies heavily on the ruby orb/image setting most of the
+      # default config. e.g. install_deps does save/restore of caching by
+      # default ("with-cache: false" will disable). See docs for customization:
+      # https://circleci.com/developer/orbs/orb/circleci/ruby
+      - ruby/install-deps:
+          key: gems-v2 # bump this when you need to expire gem cache
+      - persist_to_workspace:
+          root: ~/
           paths:
-            - vendor/bundle
+            - libraries
+            - .bundle
+
   test:
     parallelism: 4
     executor: libraries
     steps:
-      - checkout
-      - restore_cache:
-          keys:
-            # when lock file changes, use increasingly general patterns to restore cache
-            - v1-gem-cache-{{ arch }}-{{ .Branch }}-{{ checksum "Gemfile.lock" }}
-            - v1-gem-cache-{{ arch }}-{{ .Branch }}-
-            - v1-gem-cache-{{ arch }}-
-      - run: sudo apt-get -y -qq update
-      - run: sudo apt-get -y --no-install-recommends install cmake libpq-dev
-      - ruby/bundle-install
-      - save_cache:
-          key: v1-gem-cache-{{ arch }}-{{ .Branch }}-{{ checksum "Gemfile.lock" }}
-          paths:
-            - vendor/bundle
-      - ruby/test
+      - attach_workspace:
+          at: ~/
+      - ruby/rspec-test
+
+  lint:
+    parallelism: 1
+    executor: libraries
+    steps:
+      - attach_workspace:
+          at: ~/
+      - run:
+          name: Run linter
+          command: |
+            pwd
+            bundle exec rubocop -L | circleci tests split > /tmp/lint-split
+            bundle exec rubocop $(cat /tmp/lint-split)
 
 workflows:
   version: 2
-  build_and_test:
+  circleci_build:
     jobs:
-      - build
+      - install
       - test:
           requires:
-            - build
+            - install
+      - lint:
+          requires:
+            - install

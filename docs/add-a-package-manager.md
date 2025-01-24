@@ -99,14 +99,14 @@ Here's an example from [Cargo](../app/models/package_manager/cargo.rb):
 
 ```ruby
 def self.mapping(raw_project)
-  {
-    :name => raw_project['crate']['id'],
-    :homepage => raw_project['crate']['homepage'],
-    :description => raw_project['crate']['description'],
-    :keywords_array => Array.wrap(raw_project['crate']['keywords']),
-    :licenses => raw_project['crate']['license'],
-    :repository_url => repo_fallback(raw_project['crate']['repository'], raw_project['crate']['homepage'])
-  }
+  MappingBuilder.build_hash({
+    name: raw_project['crate']['id'],
+    homepage: raw_project['crate']['homepage'],
+    description: raw_project['crate']['description'],
+    keywords_array: Array.wrap(raw_project['crate']['keywords']),
+    licenses: raw_project['crate']['license'],
+    repository_url: repo_fallback(raw_project['crate']['repository'], raw_project['crate']['homepage'])
+  })
 end
 ```
 
@@ -125,10 +125,10 @@ Here's an example from [NuGet](../app/models/package_manager/nu_get.rb):
 ```ruby
 def self.versions(raw_project, _name)
   raw_project[:releases].map do |item|
-    {
+    VersionBuilder.build_hash(
       number: item['catalogEntry']['version'],
       published_at: item['catalogEntry']['published']
-    }
+    )
   end
 end
 ```
@@ -300,24 +300,6 @@ If the `PackageManager` class has a `#dependencies` method then set this to `tru
 HAS_DEPENDENCIES = true
 ```
 
-### `BIBLIOTHECARY_SUPPORT`
-
-If your package manager has the concept of a manifest, a file that lists dependencies for a repository, for example `Gemfile`, `package.json` and `setup.py`, then you can add support to [Bibliothecary](https://github.com/librariesio/bibliothecary) to parse dependencies from those manifests from repositories on GitHub, GitLab and Bitbucket.
-
-If [Bibliothecary](https://github.com/librariesio/bibliothecary) already has support for parsing manifest files for this package manager set it to `true`:
-
-```ruby
-BIBLIOTHECARY_SUPPORT = true
-```
-
-### `BIBLIOTHECARY_PLANNED`
-
-If it's possible that [Bibliothecary](https://github.com/librariesio/bibliothecary) support for parsing manifest files can be added for this package manager, but has not yet, set it to `true`:
-
-```ruby
-BIBLIOTHECARY_PLANNED = true
-```
-
 ### `URL`
 
 If the package manager has a website then set this to the full url with protocol:
@@ -396,19 +378,9 @@ end
 
 Once the `PackageManager` class is ready, there's some optional updates that can be added to some other repositories to enable more functionality.
 
-### Add support to Dispatch
+### Add support to Depper
 
-[Dispatch](https://github.com/librariesio/dispatch) polls RSS feeds and JSON API endpoints every 30 seconds to check for new and updated packages and then enqueues jobs to download those packages. It helps reduce the load on the package manager registries and push new data into the system faster.
-
-If your package manager has RSS feeds of new packages or recently updated packages then add each url to the [`RSS_SERVICES`](https://github.com/librariesio/dispatch/blob/master/dispatch.rb#L125) array, along with the class name of the package.
-
-If your package manager has JSON API of new packages or recently updated packages then add each url to the [`JSON_SERVICES`](https://github.com/librariesio/dispatch/blob/master/dispatch.rb#L103) array, along with the class name of the package.
-
-### Add Bibliothecary support
-
-If your package manager has the concept of a manifest, a file that lists dependencies for a repository, then you can add support to [Bibliothecary](https://github.com/librariesio/bibliothecary) to parse dependencies from those manifests from repositories on GitHub, GitLab and Bitbucket.
-
-Check out the documentation on adding support for a new package manager in the Bibliothecary repo: https://github.com/librariesio/bibliothecary
+[Depper](https://github.com/librariesio/depper) polls RSS feeds and JSON API endpoints to check for new and updated packages and then enqueues jobs to download those packages. It helps reduce the load on the package manager registries and push new data into the system faster. You will want to add a new ingestor that understands how to track changes in the package manager.
 
 ### Add icon to Pictogram
 
