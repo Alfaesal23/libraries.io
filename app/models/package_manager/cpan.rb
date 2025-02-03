@@ -4,7 +4,6 @@ module PackageManager
   class CPAN < Base
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
-    BIBLIOTHECARY_SUPPORT = true
     URL = "https://metacpan.org"
     COLOR = "#0298c3"
 
@@ -35,29 +34,30 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      {
+      MappingBuilder.build_hash(
         name: raw_project["distribution"],
         homepage: raw_project.fetch("resources", {})["homepage"],
         description: raw_project["abstract"],
         licenses: raw_project.fetch("license", []).join(","),
         repository_url: repo_fallback(raw_project.fetch("resources", {}).fetch("repository", {})["web"], raw_project.fetch("resources", {})["homepage"]),
-      }
+        versions: versions(raw_project, raw_project["distribution"])
+      )
     end
 
     def self.versions(raw_project, _name)
-      versions = get("https://fastapi.metacpan.org/v1/release/_search?q=distribution:#{raw_project['distribution']}&size=5000&fields=version,date")["hits"]["hits"]
+      versions = get("https://fastapi.metacpan.org/v1/release/_search?q=distribution:#{raw_project['distribution']}&size=5000&_source=version,date")["hits"]["hits"]
       versions.map do |version|
-        {
-          number: version["fields"]["version"],
-          published_at: version["fields"]["date"],
-        }
+        VersionBuilder.build_hash(
+          number: version["_source"]["version"],
+          published_at: version["_source"]["date"]
+        )
       end
     end
 
     def self.dependencies(_name, version, mapped_project)
-      versions = mapped_project[:versions]
-      version_data = versions.find { |v| v["fields"]["version"] == version }
-      version_data["fields"]["dependency"].select { |dep| dep["relationship"] == "requires" }.map do |dep|
+      versions = get("https://fastapi.metacpan.org/v1/release/_search?q=distribution:#{mapped_project[:name]}&size=5000&_source=version,dependency")["hits"]["hits"]
+      version_data = versions.find { |v| v["_source"]["version"] == version }
+      version_data["_source"]["dependency"].select { |dep| dep["relationship"] == "requires" }.map do |dep|
         {
           project_name: dep["module"].gsub("::", "-"),
           requirements: dep["version"],

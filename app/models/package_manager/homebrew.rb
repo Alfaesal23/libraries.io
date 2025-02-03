@@ -4,8 +4,6 @@ module PackageManager
   class Homebrew < Base
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
-    BIBLIOTHECARY_PLANNED = true
-    SECURITY_PLANNED = false
     URL = "http://brew.sh/"
     COLOR = "#555555"
 
@@ -31,14 +29,14 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      {
+      MappingBuilder.build_hash(
         name: raw_project["name"],
         description: raw_project["desc"],
         homepage: raw_project["homepage"],
         repository_url: repo_fallback("", raw_project["homepage"]),
-        version: raw_project.dig("versions", "stable"),
-        dependencies: raw_project["dependencies"],
-      }
+        versions: [raw_project.dig("versions", "stable")],
+        dependencies: raw_project["dependencies"]
+      )
     end
 
     def self.versions(raw_project, _name)
@@ -46,14 +44,14 @@ module PackageManager
       return [] if stable.blank?
 
       [
-        {
-          number: stable,
-        },
+        VersionBuilder.build_hash(
+          number: stable
+        ),
       ]
     end
 
     def self.dependencies(_name, version, mapped_project)
-      return nil unless version == mapped_project[:version]
+      return [] unless version == mapped_project[:versions].first
 
       mapped_project[:dependencies].map do |dependency|
         {

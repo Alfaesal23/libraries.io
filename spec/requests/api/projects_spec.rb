@@ -11,24 +11,29 @@ describe "Api::ProjectsController" do
   let!(:dependency) { create(:dependency, version: version, project: dependent_project) }
   let!(:internal_user) { create(:user) }
 
+  let!(:project_with_unknown_deps) { create(:project, name: "a-freshly-ingested-project") }
+  let!(:version_with_unknown_deps) { create(:version, project: project_with_unknown_deps, repository_sources: ["Rubygems"], updated_at: 2.days.ago) }
+
   before :each do
     internal_user.current_api_key.update_attribute(:is_internal, true)
     project.reload
     dependent_project.reload
+    project_with_unknown_deps.reload
+    version.set_dependencies_count
   end
 
   describe "GET /api/:platform/:name", type: :request do
     it "renders successfully" do
       get "/api/#{project.platform}/#{project.name}"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql project_json_response(project).to_json
     end
 
     it "renders successfully with internal API key" do
       get "/api/#{project.platform}/#{project.name}?api_key=#{internal_user.api_key}"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
 
       # with internal API key we add updated_at field
       expected_response = project_json_response(project)
@@ -37,12 +42,20 @@ describe "Api::ProjectsController" do
     end
   end
 
-  describe "GET /api/:platform/:name/dependents", type: :request do
+  # Disabled for performance reasons
+  xdescribe "GET /api/:platform/:name/dependents", type: :request do
     it "renders successfully" do
       get "/api/#{dependent_project.platform}/#{dependent_project.name}/dependents"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql [project_json_response(project)].to_json
+    end
+
+    it "renders name only" do
+      get "/api/#{dependent_project.platform}/#{dependent_project.name}/dependents?subset=name_only"
+      expect(response).to have_http_status(:success)
+      expect(response.content_type).to start_with("application/json")
+      expect(response.body).to be_json_eql [{ name: project.name }].to_json
     end
   end
 
@@ -50,17 +63,8 @@ describe "Api::ProjectsController" do
     it "renders successfully" do
       get "/api/#{project.platform}/#{project.name}/dependent_repositories"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql []
-    end
-  end
-
-  describe "GET /api/searchcode", type: :request do
-    it "renders successfully" do
-      get "/api/searchcode"
-      expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
-      expect(JSON.parse(response.body)).to contain_exactly(project.repository_url, dependent_project.repository_url)
     end
   end
 
@@ -68,42 +72,47 @@ describe "Api::ProjectsController" do
     it "renders successfully" do
       get "/api/projects/updated?start_time=#{1.year.ago.utc.iso8601}&api_key=#{internal_user.api_key}"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql ({
         updated: [
           {
             platform: project.platform,
             name: project.name,
-            updated_at: project.updated_at.utc.iso8601(3)
+            updated_at: project.updated_at.utc.iso8601(3),
           },
           {
             platform: dependent_project.platform,
             name: dependent_project.name,
-            updated_at: dependent_project.updated_at.utc.iso8601(3)
-          }
+            updated_at: dependent_project.updated_at.utc.iso8601(3),
+          },
+          {
+            platform: project_with_unknown_deps.platform,
+            name: project_with_unknown_deps.name,
+            updated_at: project_with_unknown_deps.updated_at.utc.iso8601(3),
+          },
         ],
-        deleted: []
+        deleted: [],
       }).to_json
     end
 
     it "ignores stuff after end_time" do
       get "/api/projects/updated?start_time=#{1.year.ago.utc.iso8601}&end_time=#{1.month.ago.utc.iso8601}&api_key=#{internal_user.api_key}"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql ({
         updated: [],
-        deleted: []
+        deleted: [],
       }).to_json
     end
 
     it "ignores stuff before start_time" do
-      after_everything = [project.updated_at, dependent_project.updated_at].max + 1
+      after_everything = [project.updated_at, dependent_project.updated_at, project_with_unknown_deps.updated_at].max + 1
       get "/api/projects/updated?start_time=#{after_everything.utc.iso8601}&api_key=#{internal_user.api_key}"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql ({
         updated: [],
-        deleted: []
+        deleted: [],
       }).to_json
     end
 
@@ -132,21 +141,26 @@ describe "Api::ProjectsController" do
       project.destroy!
       get "/api/projects/updated?start_time=#{1.year.ago.utc.iso8601}&api_key=#{internal_user.api_key}"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql ({
         updated: [
           {
             platform: dependent_project.platform,
             name: dependent_project.name,
-            updated_at: dependent_project.updated_at.utc.iso8601(3)
-          }
+            updated_at: dependent_project.updated_at.utc.iso8601(3),
+          },
+          {
+            platform: project_with_unknown_deps.platform,
+            name: project_with_unknown_deps.name,
+            updated_at: project_with_unknown_deps.updated_at.utc.iso8601(3),
+          },
         ],
         deleted: [
           {
             digest: deleted_digest,
-            updated_at: DeletedProject.first.updated_at.utc.iso8601(3)
-          }
-        ]
+            updated_at: DeletedProject.first.updated_at.utc.iso8601(3),
+          },
+        ],
       }).to_json
     end
   end
@@ -155,9 +169,12 @@ describe "Api::ProjectsController" do
     it "renders successfully" do
       get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql(
         {
+          code_of_conduct_url: project.code_of_conduct_url,
+          contributions_count: 0,
+          contribution_guidelines_url: project.contribution_guidelines_url,
           dependencies_for_version: version.number,
           dependent_repos_count: project.dependent_repos_count,
           dependents_count: project.dependents_count,
@@ -174,11 +191,13 @@ describe "Api::ProjectsController" do
               outdated: dependency.outdated,
               filepath: dependency.filepath,
               kind: dependency.kind,
+              optional: dependency.optional,
               normalized_licenses: dependency.project.normalized_licenses,
             }
           end,
           description: project.description,
           forks: project.forks,
+          funding_urls: project.funding_urls,
           homepage: project.homepage,
           keywords: project.keywords,
           language: project.language,
@@ -195,7 +214,9 @@ describe "Api::ProjectsController" do
           platform: project.platform,
           rank: project.rank,
           repository_license: project.repository_license,
+          repository_status: project.repository_status,
           repository_url: project.repository_url,
+          security_policy_url: project.security_policy_url,
           stars: project.stars,
           status: project.status,
           versions: project.versions.as_json(only: %i[number original_license published_at spdx_expression researched_at repository_sources]),
@@ -208,7 +229,7 @@ describe "Api::ProjectsController" do
     it "renders successfully" do
       get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies?subset=minimum"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql({
         "name": project.name,
         "platform": project.platform,
@@ -225,6 +246,7 @@ describe "Api::ProjectsController" do
             "outdated": dependency.outdated,
             "filepath": dependency.filepath,
             "kind": dependency.kind,
+            "optional": dependency.optional,
             "normalized_licenses": dependency.project.normalized_licenses,
           }
         end,
@@ -233,6 +255,10 @@ describe "Api::ProjectsController" do
   end
 
   describe "POST /api/projects/dependencies", type: :request do
+    before do
+      allow(PackageManagerDownloadWorker).to receive(:perform_async)
+    end
+
     it "renders successfully" do
       post "/api/projects/dependencies", params: {
         api_key: user.api_key,
@@ -251,10 +277,14 @@ describe "Api::ProjectsController" do
                # 404 on name
                { name: "noooooo",
                  platform: "rubygems" },
-],
+               # deps haven't been saved yet
+               { name: project_with_unknown_deps.name,
+                 platform: project_with_unknown_deps.platform },
+
+        ],
       }
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql([
         { status: 200,
           body: {
@@ -273,6 +303,7 @@ describe "Api::ProjectsController" do
                 "outdated": dependency.outdated,
                 "filepath": dependency.filepath,
                 "kind": dependency.kind,
+                "optional": dependency.optional,
                 "normalized_licenses": dependency.project.normalized_licenses,
               }
             end,
@@ -294,6 +325,7 @@ describe "Api::ProjectsController" do
                 "outdated": dependency.outdated,
                 "filepath": dependency.filepath,
                 "kind": dependency.kind,
+                "optional": dependency.optional,
                 "normalized_licenses": dependency.project.normalized_licenses,
               }
             end,
@@ -312,7 +344,22 @@ describe "Api::ProjectsController" do
             "platform": "rubygems",
             "dependencies_for_version": "latest",
           } },
+        { status: 200,
+          body: {
+            "name": project_with_unknown_deps.name,
+            "platform": project_with_unknown_deps.platform,
+            "dependencies_for_version": version_with_unknown_deps.number,
+            "dependencies": nil,
+          } },
         ].to_json)
+
+      expect(version_with_unknown_deps.reload.updated_at).to be_within(1.second).of(Time.current)
+      expect(PackageManagerDownloadWorker).to have_received(:perform_async).with(
+        "Rubygems",
+        project_with_unknown_deps.name,
+        version_with_unknown_deps.number,
+        "Api::Projects#dependencies_bulk"
+      )
     end
   end
 
@@ -320,8 +367,48 @@ describe "Api::ProjectsController" do
     it "renders successfully" do
       get "/api/#{project.platform}/#{project.name}/contributors"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql([].to_json)
+    end
+
+    context "for a Go project that is not in the DB" do
+      let!(:project) { create(:project, platform: "Go", name: "known/project") }
+
+      context "that redirects to a known project" do
+        it "redirects" do
+          allow(PackageManager::Go)
+            .to receive(:project_find_names)
+            .with("unknown/project")
+            .and_return([project.name])
+
+          get "/api/go/unknown%2Fproject/contributors"
+          expect(response).to redirect_to("/api/go/known%2Fproject/contributors")
+        end
+      end
+
+      context "that redirects to an unknown project" do
+        it "returns not found" do
+          allow(PackageManager::Go)
+            .to receive(:project_find_names)
+            .with("unknown/project")
+            .and_return(["other/unknown/project"])
+
+          expect { get "/api/go/unknown%2Fproject/contributors" }
+            .to raise_exception(ActiveRecord::RecordNotFound)
+        end
+      end
+
+      context "that does not redirect" do
+        it "returns not found" do
+          allow(PackageManager::Go)
+            .to receive(:project_find_names)
+            .with("unknown/project")
+            .and_return(["unknown/project"])
+
+          expect { get "/api/go/unknown%2Fproject/contributors" }
+            .to raise_exception(ActiveRecord::RecordNotFound)
+        end
+      end
     end
   end
 
@@ -329,7 +416,7 @@ describe "Api::ProjectsController" do
     it "renders successfully" do
       get "/api/#{project.platform}/#{project.name}/sourcerank"
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql({
         "all_prereleases": 0,
         "any_outdated_dependencies": 0,
@@ -354,42 +441,48 @@ describe "Api::ProjectsController" do
     end
   end
 
-  context "for a Go project that is not in the DB" do
-    let!(:project) { create(:project, platform: "Go", name: "known/project") }
+  describe "GET /api/:platform/:name/sync", type: :request do
+    context "without internal api key" do
+      it "forbids action" do
+        get "/api/#{project.platform}/#{project.name}/sync", params: { api_key: user.api_key }
 
-    context "that redirects to a known project" do
-      it "redirects" do
-        allow(PackageManager::Go)
-          .to receive(:project_find_names)
-          .with("unknown/project")
-          .and_return([project.name])
-
-        get "/api/go/unknown%2Fproject/contributors"
-        expect(response).to redirect_to("/api/go/known%2Fproject/contributors")
+        expect(response).to have_http_status(:forbidden)
+        expect(response.content_type).to start_with("application/json")
+        expect(response.body).to include("403")
       end
     end
 
-    context "that redirects to an unknown project" do
-      it "redirects" do
-        allow(PackageManager::Go)
-          .to receive(:project_find_names)
-          .with("unknown/project")
-          .and_return(["other/unknown/project"])
+    context "already recently synced" do
+      before { project.update!(last_synced_at: 1.hour.ago) }
 
-        expect { get "/api/go/unknown%2Fproject/contributors" }
-          .to raise_exception(ActiveRecord::RecordNotFound)
+      it "notifies already recently synced" do
+        get "/api/#{project.platform}/#{project.name}/sync", params: { api_key: internal_user.api_key }
+
+        expect(response).to have_http_status(:success)
+        expect(response.content_type).to start_with("application/json")
+        expect(response.body).to include("Project has already been synced recently")
       end
     end
 
-    context "that does not redirect" do
-      it "returns not found" do
-        allow(PackageManager::Go)
-          .to receive(:project_find_names)
-          .with("unknown/project")
-          .and_return(["unknown/project"])
+    context "success" do
+      it "notifies the sync is queued" do
+        expect_any_instance_of(Project).to receive(:manual_sync).with(force_sync_dependencies: false)
 
-        expect { get "/api/go/unknown%2Fproject/contributors" }
-          .to raise_exception(ActiveRecord::RecordNotFound)
+        get "/api/#{project.platform}/#{project.name}/sync", params: { api_key: internal_user.api_key }
+
+        expect(response).to have_http_status(:success)
+        expect(response.content_type).to start_with("application/json")
+        expect(response.body).to include("Project queued for re-sync")
+      end
+
+      it "notifies the sync is queued with force_sync_dependencies=true" do
+        expect_any_instance_of(Project).to receive(:manual_sync).with(force_sync_dependencies: true)
+
+        get "/api/#{project.platform}/#{project.name}/sync", params: { api_key: internal_user.api_key, force_sync_dependencies: true }
+
+        expect(response).to have_http_status(:success)
+        expect(response.content_type).to start_with("application/json")
+        expect(response.body).to include("Project queued for re-sync")
       end
     end
   end

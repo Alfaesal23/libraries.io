@@ -4,7 +4,6 @@ module PackageManager
   class Hackage < Base
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = false
-    BIBLIOTHECARY_SUPPORT = true
     URL = "http://hackage.haskell.org"
     COLOR = "#29b544"
 
@@ -27,7 +26,7 @@ module PackageManager
     def self.recent_names
       u = "http://hackage.haskell.org/packages/recent.rss"
       titles = SimpleRSS.parse(get_raw(u)).items.map(&:title)
-      titles.map { |t| t.split(" ").first }.uniq
+      titles.map { |t| t.split.first }.uniq
     end
 
     def self.project(name)
@@ -38,23 +37,27 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      {
+      MappingBuilder.build_hash(
         name: raw_project[:name],
-        keywords_array: Array(raw_project[:page].css("#content div:first a")[1..-1].map(&:text)),
+        keywords_array: Array(
+          raw_project[:page].css("#content table.properties tr")
+            .find { |tr| tr.css("th")&.text&.strip == "Category" }
+            &.css("a")&.map(&:text)&.reject(&:blank?)&.map(&:strip)
+        ),
         description: description(raw_project[:page]),
         licenses: find_attribute(raw_project[:page], "License"),
         homepage: find_attribute(raw_project[:page], "Home page"),
-        repository_url: repo_fallback(repository_url(find_attribute(raw_project[:page], "Source repository")), find_attribute(raw_project[:page], "Home page")),
-      }
+        repository_url: repo_fallback(repository_url(find_attribute(raw_project[:page], "Source repository")), find_attribute(raw_project[:page], "Home page"))
+      )
     end
 
     def self.versions(raw_project, _name)
       versions = find_attribute(raw_project[:page], "Versions")
       versions = find_attribute(raw_project[:page], "Version") if versions.nil?
       versions.delete("(info)").split(",").map(&:strip).map do |v|
-        {
-          number: v,
-        }
+        VersionBuilder.build_hash(
+          number: v
+        )
       end
     end
 

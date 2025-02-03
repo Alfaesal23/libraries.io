@@ -1,4 +1,5 @@
 # frozen_string_literal: true
+
 class TreeResolver
   MAX_TREE_DEPTH = 15
 
@@ -23,12 +24,9 @@ class TreeResolver
   end
 
   def load_dependencies_tree
-    tree_data = Rails.cache.fetch(
-      cache_key,
-      expires_in: 1.day,
-      race_condition_ttl: 2.minutes,
-      &method(:generate_dependency_tree)
-    )
+    tree_data = Rails.cache.fetch(cache_key, expires_in: 1.day, race_condition_ttl: 2.minutes) do
+      generate_dependency_tree
+    end
     @project_names = tree_data[:project_names]
     @license_names = tree_data[:license_names]
     @tree = tree_data[:tree]
@@ -44,14 +42,16 @@ class TreeResolver
 
   private
 
-  def generate_dependency_tree(_key)
+  def generate_dependency_tree(_key = nil)
     {
-      tree: load_dependencies_for(@version, nil, @kind, 0),
+      tree: load_dependencies_for(@version, @version.project, @kind, 0),
       project_names: @project_names,
       license_names: @license_names,
     }
   end
 
+  # @param dependency [Project, Dependency]
+  #   This is a Project for the first node, Dependency for all other nodes
   def load_dependencies_for(version, dependency, kind, index)
     return unless version
 
@@ -67,9 +67,9 @@ class TreeResolver
     dependencies = should_fetch ? fetch_dependencies(version, kind) : []
 
     {
-      version: version,
-      requirements: dependency&.requirements,
-      dependency: dependency,
+      version: version.then { |x| { number: x[:number] } },
+      requirements: dependency&.try(:requirements),
+      dependency: dependency&.then { |x| { platform: x[:platform], project_name: x[:name], kind: x[:kind] } },
       normalized_licenses: version.project.normalized_licenses,
       dependencies: dependencies
         .map { |dep| load_dependencies_for(dep.latest_resolvable_version(@date), dep, "runtime", index + 1) }
@@ -78,12 +78,13 @@ class TreeResolver
   end
 
   def cache_key
-    ["tree", @version, @kind, @date].compact
+    ["tree", @version, @kind, @date, "v2"].compact
   end
 
   def append_project_name(dependency)
     return true unless dependency
-    @project_names.add?(dependency.project_name).present?
+
+    @project_names.add?(dependency.name).present?
   end
 
   def append_license_names(version)

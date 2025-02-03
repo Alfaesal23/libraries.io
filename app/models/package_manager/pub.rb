@@ -4,7 +4,6 @@ module PackageManager
   class Pub < Base
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
-    BIBLIOTHECARY_SUPPORT = true
     URL = "https://pub.dartlang.org"
     COLOR = "#00B4AB"
 
@@ -43,19 +42,20 @@ module PackageManager
 
     def self.mapping(raw_project)
       latest_version = raw_project["versions"].last
-      {
+      MappingBuilder.build_hash(
         name: raw_project["name"],
         homepage: latest_version["pubspec"]["homepage"],
         description: latest_version["pubspec"]["description"],
         repository_url: repo_fallback("", latest_version["pubspec"]["homepage"]),
-      }
+        versions: raw_project["versions"]
+      )
     end
 
     def self.versions(raw_project, _name)
       raw_project["versions"].map do |v|
-        {
-          number: v["version"],
-        }
+        VersionBuilder.build_hash(
+          number: v["version"]
+        )
       end
     end
 
@@ -63,8 +63,19 @@ module PackageManager
       vers = mapped_project[:versions].find { |v| v["version"] == version }
       return [] if vers.nil?
 
-      map_dependencies(vers["pubspec"].fetch("dependencies", {}), "runtime") +
-        map_dependencies(vers["pubspec"].fetch("dev_dependencies", {}), "Development")
+      deps = map_dependencies(vers.dig("pubspec", "dependencies" || []), "runtime") +
+             map_dependencies(vers.dig("pubspec", "dev_dependencies") || [], "Development")
+
+      deps.each do |d|
+        # "dependencies" items can be a String, or a Hash with more details
+        d[:requirements] = d[:requirements]["version"] if d[:requirements].is_a?(Hash)
+
+        # "any" means any version, and it is assumed when the version is blank.
+        # https://dart.dev/tools/pub/dependencies#hosted-packages
+        d[:requirements] = "*" if d[:requirements].blank? || d[:requirements] == "any"
+      end
+
+      deps
     end
   end
 end

@@ -5,7 +5,6 @@ module PackageManager
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
     HAS_OWNERS = true
-    BIBLIOTHECARY_SUPPORT = true
     URL = "https://hex.pm"
     COLOR = "#6e4a7e"
 
@@ -45,24 +44,22 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      links = raw_project["meta"].fetch("links", {}).each_with_object({}) do |(k, v), h|
-        h[k.downcase] = v
-      end
-      {
+      links = raw_project["meta"].fetch("links", {}).transform_keys(&:downcase)
+      MappingBuilder.build_hash(
         name: raw_project["name"],
         homepage: links.except("github").first.try(:last),
         repository_url: links["github"],
         description: raw_project["meta"]["description"],
-        licenses: repo_fallback(raw_project["meta"].fetch("licenses", []).join(","), links.except("github").first.try(:last)),
-      }
+        licenses: repo_fallback(raw_project["meta"].fetch("licenses", []).join(","), links.except("github").first.try(:last))
+      )
     end
 
     def self.versions(raw_project, _name)
       raw_project["releases"].map do |version|
-        {
+        VersionBuilder.build_hash(
           number: version["version"],
-          published_at: version["inserted_at"],
-        }
+          published_at: version["inserted_at"]
+        )
       end
     end
 
@@ -85,7 +82,7 @@ module PackageManager
       json = get_json("https://hex.pm/api/packages/#{name}")
       json["owners"].map do |user|
         {
-          uuid: "hex-" + user["username"],
+          uuid: "hex-#{user['username']}",
           email: user["email"],
           login: user["username"],
         }

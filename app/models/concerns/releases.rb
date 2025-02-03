@@ -37,10 +37,6 @@ module Releases
     latest_stable_version || latest_stable_tag
   end
 
-  def latest_version
-    versions.order("published_at DESC NULLS LAST", created_at: :desc).first
-  end
-
   def latest_tag
     return nil if repository.nil?
 
@@ -70,11 +66,15 @@ module Releases
   end
 
   def set_latest_release_published_at
-    self.latest_release_published_at = (latest_release.try(:published_at).presence || updated_at)
+    self.latest_release_published_at = (latest_release.try(:published_at).presence || read_attribute(:latest_release_published_at) || updated_at)
   end
 
   def set_latest_release_number
     self.latest_release_number = latest_release.try(:number)
+  end
+
+  def set_latest_version
+    self.latest_version_id = versions.select(:id).order("published_at DESC NULLS LAST", created_at: :desc).first&.id
   end
 
   def set_latest_stable_release_info

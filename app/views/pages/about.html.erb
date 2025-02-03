@@ -1,4 +1,4 @@
-<% title 'About - Libraries.io' %>
+<% title 'About' %>
 <div class="row">
   <div class="col-sm-8">
    <h1>About</h1>
@@ -64,14 +64,14 @@
     </p>
         <%- if logged_in? %>
     <p>
-      <a href="<%= platforms_path %>" class="btn btn-success">
+      <a href="<%= platforms_path %>" class="btn btn-primary">
         <%= fa_icon 'star' %>
         Explore all <%= PackageManager::Base.platforms.count %> package managers
       </a>
     </p>
     <% else %>
     <p>
-      <a href="<%= login_path(return_to: request.original_url) %>" class="btn btn-success">
+      <a href="<%= login_path(return_to: request.original_url) %>" class="btn btn-primary">
         <%= fa_icon 'star' %>
         Sign up, it's free for Open Source
       </a>
@@ -86,7 +86,7 @@
       Libraries.io supports the following package managers. For more detail check out <%= link_to 'our compatibility matrix', compatibility_path %>.
     </p> 
     <div class="">
-      <% PackageManager::Base.platforms.select{|p| p::BIBLIOTHECARY_SUPPORT }.sort_by{|p| p.formatted_name.downcase }.each do |platform| %>
+      <% PackageManager::Base.platforms.sort_by{|p| p.formatted_name.downcase }.each do |platform| %>
         <a class="pictogram tip pictogram-<%= platform.formatted_name.downcase %>" href="/<%= platform.formatted_name %>" title='<%= platform.formatted_name %>'></a>
       <% end %>
     </div>

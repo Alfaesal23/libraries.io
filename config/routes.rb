@@ -1,16 +1,20 @@
 # frozen_string_literal: true
 
+PLATFORM_CONSTRAINT = /[\w-]+/
+PROJECT_CONSTRAINT = /[^\/]+/
+VERSION_CONSTRAINT = /[\w.-]+/
+
+class IsAdminConstraint
+  def matches?(request)
+    User.find_by_id(request.session[:user_id])&.admin? || false
+  end
+end
+
 Rails.application.routes.draw do
   require "sidekiq/web"
   require "sidekiq_unique_jobs/web"
-  if Rails.env.production?
-    Sidekiq::Web.use Rack::Auth::Basic do |username, password|
-      username == ENV["SIDEKIQ_USERNAME"] && password == ENV["SIDEKIQ_PASSWORD"]
-    end
-  end
-  mount Sidekiq::Web => "/sidekiq"
-
-  mount PgHero::Engine, at: "pghero"
+  mount Sidekiq::Web => "/sidekiq", constraints: Rails.env.production? ? IsAdminConstraint.new : nil
+  mount PgHero::Engine, at: "pghero", constraints: Rails.env.production? ? IsAdminConstraint.new : nil
 
   get "/healthcheck", to: "healthcheck#index", as: :healthcheck
   get "/home", to: "dashboard#home"
@@ -20,8 +24,6 @@ Rails.application.routes.draw do
 
     get "/", to: "docs#index", defaults: { format: :html }
     get "/search", to: "search#index"
-    get "/bower-search", to: "bower_search#index"
-    get "/searchcode", to: "projects#searchcode"
 
     get "/platforms", to: "platforms#index"
 
@@ -50,28 +52,30 @@ Rails.application.routes.draw do
       get "/:host_type/:login/projects", to: "repository_users#projects"
 
       get "/:host_type/:owner/:name/dependencies", to: "repositories#dependencies", constraints: { name: /[^\/]+/ }
+      get "/:host_type/:owner/:name/shields_dependencies", to: "repositories#shields_dependencies", constraints: { name: /[^\/]+/ }
       get "/:host_type/:owner/:name/projects", to: "repositories#projects", constraints: { name: /[^\/]+/ }
+      get "/:host_type/:owner/:name/sync", to: "repositories#sync", constraints: { name: /[^\/]+/ }
       get "/:host_type/:owner/:name", to: "repositories#show", constraints: { name: /[^\/]+/ }
+      get "/:host_type/repository", to: "repositories#show" # query params version of the show repository API endpoint
 
       get "/:host_type/:login", to: "repository_users#show"
     end
 
-    PLATFORM_CONSTRAINT = /[\w\-]+/.freeze
-    PROJECT_CONSTRAINT = /[^\/]+/.freeze
-    VERSION_CONSTRAINT = /[\w.\-]+/.freeze
+    get "/repository/projects", to: "repositories#project_names"
 
     put "/maintenance/stats/enqueue/:platform/:name", as: :maintenance_stat_enqueue, to: "maintenance_stats#enqueue", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
     post "/maintenance/stats/begin/bulk", to: "maintenance_stats#begin_watching_bulk"
+    post "/maintenance/stats/begin/repositories", to: "maintenance_stats#begin_watching_repositories"
     get "/maintenance/stats/begin/:platform/:name", to: "maintenance_stats#begin_watching", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
 
-    get "/:platform/:name/usage", to: "project_usage#show", as: :project_usage, constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
     get "/:platform/:name/sourcerank", to: "projects#sourcerank", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
     get "/:platform/:name/contributors", to: "projects#contributors", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
-    get "/:platform/:name/:number/tree", to: "tree#show", constraints: { platform: /[\w\-]+/, name: PROJECT_CONSTRAINT, number: VERSION_CONSTRAINT }, as: :version_tree
+    get "/:platform/:name/:number/tree", to: "tree#show", constraints: { platform: /[\w-]+/, name: PROJECT_CONSTRAINT, number: VERSION_CONSTRAINT }, as: :version_tree
     get "/:platform/:name/:number/dependencies", to: "projects#dependencies", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT, number: VERSION_CONSTRAINT }
     get "/:platform/:name/dependent_repositories", to: "projects#dependent_repositories", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
     get "/:platform/:name/dependents", to: "projects#dependents", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
     get "/:platform/:name/tree", to: "tree#show", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }, as: :tree
+    get "/:platform/:name/sync", to: "projects#sync", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }, as: :sync
     get "/:platform/:name", to: "projects#show", constraints: { platform: PLATFORM_CONSTRAINT, name: PROJECT_CONSTRAINT }
   end
 
@@ -88,19 +92,11 @@ Rails.application.routes.draw do
         put "deprecate"
         put "unmaintain"
       end
-      collection do
-        get "deprecated"
-        get "unmaintained"
-      end
     end
-
-    get "/platforms/:id", to: "platforms#show", as: :platform
-    get "/platforms", to: "platforms#index", as: :platforms
 
     get "/stats", to: "stats#index", as: :stats
     get "/stats/api", to: "stats#api", as: :api_stats
     get "/stats/repositories", to: "stats#repositories", as: :repositories_stats
-    get "/graphs", to: "stats#graphs", as: :graphs
     get "/:host_type/:login/dependencies", to: "repository_organisations#dependencies", as: :organisation_dependencies
     delete "/:host_type/:login", to: "repository_organisations#destroy"
     patch "/:host_type/:login", to: "repository_organisations#update"
@@ -110,9 +106,7 @@ Rails.application.routes.draw do
     get "/", to: "stats#overview", as: :overview
   end
 
-  get "/trending", to: "projects#trending", as: :trending_projects
   get "/explore", to: "explore#index"
-  get "/collections", to: "collections#index", as: :collections
   get "/explore/:language-:keyword-libraries", to: "collections#show", as: :collection
 
   get "/recommendations", to: "recommendations#index", as: :recommendations
@@ -124,7 +118,7 @@ Rails.application.routes.draw do
   post "/watch/:repository_id", to: "dashboard#watch", as: :watch
   post "/unwatch/:repository_id", to: "dashboard#unwatch", as: :unwatch
 
-  resource :account, except: [:edit, :new, :create] do
+  resource :account, except: %i[edit new create] do
     member do
       get "delete"
       put "disable_emails"
@@ -141,7 +135,6 @@ Rails.application.routes.draw do
 
   resources :licenses, constraints: { id: /.*/ }, defaults: { format: "html" }
   resources :languages
-  resources :keywords, constraints: { id: /.*/ }, defaults: { format: "html" }
   resources :subscriptions
   resources :repository_subscriptions
   get "/subscribe/:project_id", to: "subscriptions#subscribe", as: :subscribe
@@ -153,10 +146,7 @@ Rails.application.routes.draw do
   scope constraints: { host_type: /(github|gitlab|bitbucket)/i }, defaults: { host_type: "github" } do
     post "/hooks/:host_type", to: "hooks#github"
 
-    get "/:host_type/languages", to: "repositories#languages", as: :github_languages
-    get "/:host_type/trending", to: "repositories#hacker_news", as: :trending
-    get "/:host_type/new", to: "repositories#new", as: :new_repos
-    get "/:host_type/organisations", to: "repository_organisations#index", as: :repository_organisations
+    get "/:host_type/organisations", to: redirect("/")
     get "/:host_type/:login/dependencies", to: "repository_users#dependencies", as: :user_dependencies
     get "/:host_type/:login/repositories", to: "repository_users#repositories", as: :user_repositories
     get "/:host_type/:login/contributions", to: "repository_users#contributions", as: :user_contributions
@@ -172,20 +162,11 @@ Rails.application.routes.draw do
     get "/:host_type/:owner/:name/forks", to: "repositories#forks", as: :repository_forks, format: false, constraints: { name: /[^\/]+/ }
     get "/:host_type/:owner/:name/tags", to: "repositories#tags", as: :repository_tags, format: false, constraints: { name: /[^\/]+/ }
     get "/:host_type/:owner/:name/dependencies", to: "repositories#dependencies", format: false, constraints: { name: /[^\/]+/ }, as: :repository_dependencies
-    get "/:host_type/:owner/:name/tree", to: "repository_tree#show", as: :repository_tree, format: false, constraints: { name: /[^\/]+/ }
 
-    get "/:host_type/:owner/:name/web_hooks", to: "web_hooks#index", as: :repository_web_hooks, format: false, constraints: { name: /[^\/]+/ }
-    get "/:host_type/:owner/:name/web_hooks/new", to: "web_hooks#new", as: :new_repository_web_hook, format: false, constraints: { name: /[^\/]+/ }
-    delete "/:host_type/:owner/:name/web_hooks/:id", to: "web_hooks#destroy", as: :repository_web_hook, format: false, constraints: { name: /[^\/]+/ }
-    patch "/:host_type/:owner/:name/web_hooks/:id", to: "web_hooks#update", format: false, constraints: { name: /[^\/]+/ }
-    get "/:host_type/:owner/:name/web_hooks/:id/edit", to: "web_hooks#edit", as: :edit_repository_web_hook, format: false, constraints: { name: /[^\/]+/ }
-    post "/:host_type/:owner/:name/web_hooks/:id/test", to: "web_hooks#test", as: :test_repository_web_hook, format: false, constraints: { name: /[^\/]+/ }
-    post "/:host_type/:owner/:name/web_hooks", to: "web_hooks#create", format: false, constraints: { name: /[^\/]+/ }
-
-    get "/:host_type", to: "repositories#index", as: :hosts
+    get "/:host_type", to: redirect("/")
   end
 
-  get "/repos", to: "repositories#index", as: :repos
+  get "/repos", to: redirect("/")
 
   get "/search", to: "search#index"
 
@@ -209,8 +190,8 @@ Rails.application.routes.draw do
   get "/privacy", to: "pages#privacy", as: :privacy
   get "/terms", to: "pages#terms", as: :terms
   get "/compatibility", to: "pages#compatibility", as: :compatibility
-  get "/data", to: "pages#data", as: :data
-  get "/open-data", to: redirect("/data")
+  get "/data", to: redirect("/")
+  get "/open-data", to: redirect("/")
 
   post "/hooks/package", to: "hooks#package"
 
@@ -229,7 +210,6 @@ Rails.application.routes.draw do
   post "/:platform/:name/mute", to: "projects#mute", as: :mute_project, constraints: { name: /.*/ }
   delete "/:platform/:name/unmute", to: "projects#unmute", as: :unmute_project, constraints: { name: /.*/ }
   get "/:platform/:name/tree", to: "tree#show", constraints: { name: PROJECT_CONSTRAINT }, as: :tree
-  get "/:platform/:name/score", to: "projects#score", as: :project_score, constraints: { name: /.*/ }
   get "/:platform/:name/sourcerank", to: "projects#sourcerank", as: :project_sourcerank, constraints: { name: /.*/ }
   get "/:platform/:name/versions", to: "projects#versions", as: :project_versions, constraints: { name: /.*/ }
   get "/:platform/:name/tags", to: "projects#tags", as: :project_tags, constraints: { name: /.*/ }
@@ -244,5 +224,5 @@ Rails.application.routes.draw do
   get "/:platform/:name.about", to: "projects#about", as: :about_project, constraints: { name: /.*/ }
   get "/:platform/:name.ABOUT", to: "projects#about", constraints: { name: /.*/ }
   get "/:platform/:name", to: "projects#show", as: :project, constraints: { name: /.*/ }, defaults: { format: "html" }
-  get "/:id", to: "platforms#show", as: :platform
+  get "/:id", to: "platforms#show", as: :platform, constraints: { format: "html" }
 end

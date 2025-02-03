@@ -4,7 +4,6 @@ module PackageManager
   class Julia < Base
     HAS_VERSIONS = false
     HAS_DEPENDENCIES = false
-    BIBLIOTHECARY_SUPPORT = true
     URL = "http://pkg.julialang.org/"
     COLOR = "#a270ba"
 
@@ -27,17 +26,18 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      {
+      MappingBuilder.build_hash(
         name: raw_project[:name],
-        repository_url: repo_fallback(raw_project[:repository_url], ""),
-      }
+        description: nil, # TODO: can we get description?
+        repository_url: repo_fallback(raw_project[:repository_url], "")
+      )
     end
 
     def self.versions(raw_project, _name)
       raw_project["versions"].map do |v|
-        {
-          number: v,
-        }
+        VersionBuilder.build_hash(
+          number: v
+        )
       end
     end
   end

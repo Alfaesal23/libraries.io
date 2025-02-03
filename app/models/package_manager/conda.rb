@@ -5,10 +5,14 @@ module PackageManager
     HAS_VERSIONS = true
     HAS_DEPENDENCIES = true
     REPOSITORY_SOURCE_NAME = "Main"
-    BIBLIOTHECARY_SUPPORT = true
-    SUPPORTS_SINGLE_VERSION_UPDATE = true
     URL = "https://anaconda.org"
     API_URL = "https://conda.libraries.io"
+
+    PROVIDER_MAP = ProviderMap.new(prioritized_provider_infos: [
+      ProviderInfo.new(identifier: "Main", default: true, provider_class: Main),
+      ProviderInfo.new(identifier: "CondaMain", provider_class: Main),
+      ProviderInfo.new(identifier: "CondaForge", provider_class: Forge),
+    ])
 
     def self.formatted_name
       "conda"
@@ -27,7 +31,7 @@ module PackageManager
     end
 
     def self.one_version(raw_project, version_string)
-      get_json("#{API_URL}/#{self::REPOSITORY_SOURCE_NAME}/#{raw_project["name"]}/#{version_string}")&.first
+      get_json("#{API_URL}/#{self::REPOSITORY_SOURCE_NAME}/#{raw_project['name']}/#{version_string}")&.first
     end
 
     def self.project(name)
@@ -55,32 +59,11 @@ module PackageManager
       end
     end
 
-    def self.package_link(project, _version = nil)
-      db_version = project.versions.last
-      repository_source = db_version&.repository_sources&.first.presence || "default"
-      PROVIDER_MAP[repository_source].package_link(project)
-    end
-
     def self.install_instructions(db_project, _version = nil)
-      db_version = db_project.versions.last
-      repository_source = db_version&.repository_sources&.first.presence || "default"
-      PROVIDER_MAP[repository_source].install_instructions(db_project)
-    end
-
-    PROVIDER_MAP = {
-      "CondaForge" => Forge,
-      "default" => Main,
-      "Main" => Main,
-      "CondaMain" => Main,
-    }.freeze
-
-    def self.providers(project)
-      project
-        .versions
-        .flat_map(&:repository_sources)
-        .compact
-        .uniq
-        .map { |source| PROVIDER_MAP[source] } || [PROVIDER_MAP["default"]]
+      self::PROVIDER_MAP
+        .preferred_provider_for_project(project: db_project)
+        .provider_class
+        .install_instructions(db_project)
     end
 
     def self.check_status_url(db_project)
@@ -88,18 +71,34 @@ module PackageManager
     end
 
     def self.mapping(raw_project)
-      # TODO: can we make this more explicit?
-      raw_project.deep_symbolize_keys
+      MappingBuilder.build_hash(
+        name: raw_project["name"],
+        description: raw_project["description"],
+        repository_url: raw_project["repository_url"],
+        homepage: raw_project["homepage"],
+        licenses: raw_project["licenses"],
+        versions: raw_project["versions"]
+      )
     end
 
     def self.versions(raw_project, _name)
-      raw_project["versions"].map { |version| version.deep_symbolize_keys.slice(:number, :original_license, :published_at) }
+      raw_project["versions"].map do |version|
+        VersionBuilder.build_hash(
+          number: version["number"],
+          original_license: version["original_license"],
+          published_at: version["published_at"]
+        )
+      end
     end
 
     def self.dependencies(name, version, _mapped_project)
       version_data = get_json("#{API_URL}/package/#{name}")["versions"]
-      deps = version_data.find { |item| item["number"] == version }&.dig("dependencies")&.map { |d| d.split(" ") }
+      deps = version_data
+        .find { |item| item["number"] == version }
+        &.dig("dependencies")&.map(&:split)
+
       map_dependencies(deps, "runtime")
+        .each { |d| d[:requirements] = "*" if d[:requirements].blank? } # consider nil/blank requirements from the API as wildcard "*", since Bibliothecary does
     end
   end
 end

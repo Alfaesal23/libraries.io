@@ -10,17 +10,18 @@ describe "API::StatusController" do
   let!(:repository) { create(:repository) }
   let!(:maintenance_stat) { create(:repository_maintenance_stat, repository: repository) }
   let!(:project) { create(:project, repository: repository) }
-  let!(:project_django) { create(:project, name: "Django", platform: "Pypi") }
+  let!(:project_django) { create(:project, name: "Django", platform: "Pypi", keywords: "old keywords", keywords_array: %w[new keywords]) }
 
   before do
     internal_user.current_api_key.update_attribute(:is_internal, true)
+    project_django.versions << build(:version)
   end
 
   describe "POST /api/check", type: :request do
     it "renders successfully with one" do
       post url, params: { api_key: internal_user.api_key, projects: [{ name: project.name, platform: project.platform }] }
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body.include?(project.name)).to be == true
 
       # check for maintenance stats being returned
@@ -38,14 +39,14 @@ describe "API::StatusController" do
     it "renders empty json list if cannot find Project" do
       post url, params: { api_key: internal_user.api_key, projects: [{ name: "rails", platform: "rubygems" }] }
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql []
     end
 
     it "renders successfully" do
       post url, params: { api_key: internal_user.api_key, projects: [{ name: project.name, platform: "rubygems" }, { name: "django", platform: "Pypi" }] }
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body.include?(project.name)).to be == true
       expect(response.body.include?("Django")).to be == true
     end
@@ -53,7 +54,7 @@ describe "API::StatusController" do
     it "renders empty maintenance stats if they don't exist" do
       post url, params: { api_key: internal_user.api_key, projects: [{ name: project_django.name, platform: project_django.platform }] }
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
       expect(response.body.include?(project_django.name)).to be == true
 
       json_response = JSON.parse(response.body)
@@ -71,6 +72,7 @@ describe "API::StatusController" do
         homepage
         keywords
         language
+        last_synced_at
         latest_download_url
         latest_release_number
         latest_release_published_at
@@ -83,7 +85,6 @@ describe "API::StatusController" do
         rank
         repository_maintenance_stats
         repository_url
-        score
         stars
         status
         versions
@@ -94,16 +95,32 @@ describe "API::StatusController" do
         params: {
           api_key: internal_user.api_key,
           projects: [{ name: project_django.name, platform: project_django.platform }],
-          score: true,
         }
       )
       expect(response).to have_http_status(:success)
-      expect(response.content_type).to eq("application/json")
+      expect(response.content_type).to start_with("application/json")
 
       project = JSON.parse(response.body).first
       expected_fields.each do |field|
         expect(project).to have_key(field)
       end
+
+      expect(project["versions"][0].keys).to eq(%w[number published_at original_license status repository_sources])
+    end
+
+    it "correctly serves the keywords array" do
+      post(
+        url,
+        params: {
+          api_key: internal_user.api_key,
+          projects: [
+            { name: project_django.name, platform: project_django.platform },
+          ],
+        }
+      )
+
+      expect(response).to have_http_status(:success)
+      expect(JSON.parse(response.body).dig(0, "keywords")).to eq("new,keywords")
     end
 
     it "correctly serves the original name" do
@@ -116,7 +133,6 @@ describe "API::StatusController" do
           projects: [
             { name: requested_name, platform: project_django.platform },
           ],
-          score: true,
         }
       )
 
@@ -139,7 +155,6 @@ describe "API::StatusController" do
           projects: [
             { name: requested_name, platform: project.platform },
           ],
-          score: true,
         }
       )
 
@@ -152,7 +167,7 @@ describe "API::StatusController" do
       it "returns no maintenance stats or updated_at" do
         post url, params: { api_key: normal_user.api_key, projects: [{ name: project_django.name, platform: project_django.platform }] }
         expect(response).to have_http_status(:success)
-        expect(response.content_type).to eq("application/json")
+        expect(response.content_type).to start_with("application/json")
         expect(response.body.include?(project_django.name)).to be == true
 
         json_response = JSON.parse(response.body)

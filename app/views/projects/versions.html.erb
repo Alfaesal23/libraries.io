@@ -1,4 +1,4 @@
-<% title "#{@project} published releases on #{@project.platform_name} - Libraries.io" %>
+<% title "#{@project} published releases on #{@project.platform_name}" %>
 <% content_for :atom, auto_discovery_link_tag(:atom, project_versions_url({format: "atom"}.merge(@project.to_param))) %>
 
 <h1>
@@ -17,7 +17,7 @@
           <% if version.published_at.present? %>
             <td>
               <small class='text-muted'>
-                <%= version.published_at.to_s(:long_ordinal) %>
+                <%= version.published_at.to_fs(:long_ordinal) %>
               </small>
             </td>
           <% end %>
@@ -31,7 +31,7 @@
             </small>
           </td>
           <td>
-            <% if version.previous_version %>
+            <% if @versions.count < 1000 && version.previous_version %>
               <small class='text-muted'>
                 <%= link_to version.diff_url do %>
                   <%= fa_icon('random') %>
@@ -44,7 +44,7 @@
         </tr>
         <% end %>
       </table>
-      <%= will_paginate @versions, page_links: false %>
+      <%= will_paginate @versions, page_links: true %>
       <p>
         <%= link_to project_versions_path(@project.to_param.merge(format: :atom)) do %>
           <%= fa_icon "rss-square" %>

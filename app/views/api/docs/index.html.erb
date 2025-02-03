@@ -1,4 +1,4 @@
-<% title 'API Documentation - Libraries.io' %>
+<% title 'API Documentation' %>
 
 <div class="row">
   <div class="col-md-12">
@@ -7,6 +7,8 @@
 </div>
 <div class="row">
   <div class="col-sm-8">
+    <%= render partial: "login_prompt" unless logged_in? %>
+
     <h3 id='authentication'>Authentication</h3>
 
     <p>
@@ -20,7 +22,9 @@
     <h3 id='rate-limit'>Rate limit</h3>
 
     <p>
-      All requests are subject to a 60/request/minute rate limit based on your api_key, any further requests within that timeframe will result in a <code>429</code> response.
+      All requests are subject to a 60 request/minute rate limit based on your API key, any further requests within that timeframe will result in a <code>429</code> response.
+      <br>
+      Larger scale access to data is available from <a href="https://tidelift.com/solutions/open-source-data?utm_source=librariesio&utm_medium=referral&utm_campaign=api">Tidelift</a>.
     </p>
 
     <h3 id='pagination'>Pagination</h3>
@@ -94,7 +98,10 @@
       Get packages that have at least one version that depends on a given project.
     </p>
 
-
+    <p>
+      The dependents endpoint accepts a <code>subset</code> parameter, one of
+        <code>name_only</code>.
+    </p>
 
     <p>
       <code>GET https://libraries.io/api/:platform/:name/dependents?api_key=<%= @api_key %></code>
@@ -218,7 +225,7 @@
     <h3 id='repository-dependencies'>Repository Dependencies</h3>
 
     <p>
-      Get a list of dependencies for a repositories. Currently only works for open source repositories.
+      Get a list of dependencies for all of a repository's projects. Currently only works for open source repositories.
     </p>
     <p>
       <code>GET https://libraries.io/api/github/:owner/:name/dependencies?api_key=<%= @api_key %></code>
