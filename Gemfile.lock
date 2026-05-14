@@ -173,7 +173,8 @@ GEM
       addressable
     csv (3.3.5)
     dalli (3.2.5)
-    database_cleaner (1.99.0)
+    database_cleaner (2.1.0)
+      database_cleaner-active_record (>= 2, < 3)
     database_cleaner-active_record (2.1.0)
       activerecord (>= 5.a)
       database_cleaner-core (~> 2.0.0)
@@ -643,7 +644,7 @@ DEPENDENCIES
   counter_culture
   creole
   dalli
-  database_cleaner (~> 1.99.0)
+  database_cleaner (~> 2.1.0)
   database_cleaner-active_record
   datadog (~> 2)
   db-query-matchers
@@ -789,7 +790,7 @@ CHECKSUMS
   css_parser (1.22.0) sha256=f274988a40c6178305530d60e7deb5162f7b5538b701b61b5488fc703e5b40c1
   csv (3.3.5) sha256=6e5134ac3383ef728b7f02725d9872934f523cb40b961479f69cf3afa6c8e73f
   dalli (3.2.5) sha256=4a4e42e823fa15a30c5211ce38e1225e4c0e40936ec66c3e912341b198262f86
-  database_cleaner (1.99.0) sha256=4854c518ed36fae7ea8961993ff3cfe7c0a0434c4762ab2f0026075adbd2d1b2
+  database_cleaner (2.1.0) sha256=1dcba26e3b1576da692fc6bac10136a4744da5bcc293d248aae19640c65d89cd
   database_cleaner-active_record (2.1.0) sha256=7384b973d67bcc1b5a850b876a4638aa83cca3bc88f9d87562fe25cd2dd60d8a
   database_cleaner-core (2.0.1) sha256=8646574c32162e59ed7b5258a97a208d3c44551b854e510994f24683865d846c
   datadog (2.22.0) sha256=ca35af33be9bdfe5595f93b38f69f89ec04e0b27d4cb59bb814a47e1b421c885
