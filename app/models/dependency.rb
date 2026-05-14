@@ -43,9 +43,9 @@ class Dependency < ApplicationRecord
 
   delegate :latest_stable_release_number, :latest_release_number, :deprecated?, :score, to: :project, allow_nil: true
 
-  alias_method :latest_stable, :latest_stable_release_number
-  alias_method :latest, :latest_release_number
-  alias_method :deprecated, :deprecated?
+  alias latest_stable latest_stable_release_number
+  alias latest latest_release_number
+  alias deprecated deprecated?
 
   def filepath
     nil
