@@ -10,10 +10,10 @@ describe "API::SearchController", elasticsearch: true do
     let!(:version) { create(:version, project: project, number: "1.0.0") }
 
     context "with missing api key" do
-      it "returns forbidden" do
+      it "returns unauthorized" do
         get "/api/search"
 
-        expect(response).to have_http_status(:forbidden)
+        expect(response).to have_http_status(:unauthorized)
       end
     end
 

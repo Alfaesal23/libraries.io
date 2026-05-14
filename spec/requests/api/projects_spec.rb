@@ -167,7 +167,7 @@ describe "Api::ProjectsController" do
 
   describe "GET /api/:platform/:name/:number/dependencies", type: :request do
     it "renders successfully" do
-      get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies"
+      get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies?api_key=#{user.api_key}"
       expect(response).to have_http_status(:success)
       expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql(
@@ -228,7 +228,7 @@ describe "Api::ProjectsController" do
       let!(:version) { create(:version, number: "1.0.0-alpha-a.b-c-somethinglong+build.1-aef.1-its-okay", project: project, repository_sources: ["Rubygems"]) }
 
       it "renders successfully" do
-        get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies"
+        get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies?api_key=#{user.api_key}"
         expect(response).to have_http_status(:success)
         expect(response.content_type).to start_with("application/json")
         expect(response.body).to be_json_eql(
@@ -289,7 +289,7 @@ describe "Api::ProjectsController" do
 
   describe "GET /api/:platform/:name/dependencies?subset=minimum", type: :request do
     it "renders successfully" do
-      get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies?subset=minimum"
+      get "/api/#{project.platform}/#{project.name}/#{version.number}/dependencies?subset=minimum&api_key=#{user.api_key}"
       expect(response).to have_http_status(:success)
       expect(response.content_type).to start_with("application/json")
       expect(response.body).to be_json_eql({

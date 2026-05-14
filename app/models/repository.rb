@@ -128,7 +128,7 @@ class Repository < ApplicationRecord
 
   scope :with_description, -> { where("repositories.description <> ''") }
   scope :with_license, -> { where("repositories.license <> ''") }
-  scope :without_license, -> { where("repositories.license IS ? OR repositories.license = ''", nil) }
+  scope :without_license, -> { where("repositories.license IS NULL OR repositories.license = ''") }
 
   scope :pushed, -> { where.not(pushed_at: nil) }
   scope :good_quality, -> { maintained.open_source.pushed }

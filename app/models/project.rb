@@ -156,14 +156,14 @@ class Project < ApplicationRecord
 
   scope :with_homepage, -> { where("homepage <> ''") }
   scope :with_repository_url, -> { where("repository_url <> ''") }
-  scope :without_repository_url, -> { where("repository_url IS ? OR repository_url = ''", nil) }
+  scope :without_repository_url, -> { where("repository_url IS NULL OR repository_url = ''") }
   scope :with_repo, -> { joins(:repository).where("repositories.id IS NOT NULL") }
   scope :without_repo, -> { where(repository_id: nil) }
   scope :with_description, -> { where("projects.description <> ''") }
 
   scope :with_license, -> { where("licenses <> ''") }
-  scope :without_license, -> { where("licenses IS ? OR licenses = ''", nil) }
-  scope :unlicensed, -> { maintained.without_license.with_repo.where("repositories.license IS ? OR repositories.license = ''", nil) }
+  scope :without_license, -> { where("licenses IS NULL OR licenses = ''") }
+  scope :unlicensed, -> { maintained.without_license.with_repo.where("repositories.license IS NULL OR repositories.license = ''") }
 
   scope :with_versions, -> { where("versions_count > 0") }
   scope :without_versions, -> { where("versions_count < 1") }
