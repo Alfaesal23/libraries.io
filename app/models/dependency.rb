@@ -39,12 +39,13 @@ class Dependency < ApplicationRecord
   before_create :set_project_id
 
   alias_attribute :name, :project_name
-  alias_attribute :latest_stable, :latest_stable_release_number
-  alias_attribute :latest, :latest_release_number
-  alias_attribute :deprecated, :deprecated?
   alias outdated outdated?
 
   delegate :latest_stable_release_number, :latest_release_number, :deprecated?, :score, to: :project, allow_nil: true
+
+  alias_method :latest_stable, :latest_stable_release_number
+  alias_method :latest, :latest_release_number
+  alias_method :deprecated, :deprecated?
 
   def filepath
     nil
