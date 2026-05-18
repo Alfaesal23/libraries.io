@@ -6,7 +6,15 @@ class Api::ProjectsController < Api::ApplicationController
   before_action :require_internal_api_key, only: :sync
 
   def show
-    render(json: @project, show_updated_at: internal_api_key?)
+    if internal_api_key?
+      render json: ProjectSerializer.new(@project, show_updated_at: true).as_json
+    else
+      cache_key = "api_project:v1:#{@project.id}:#{@project.updated_at.to_i}:#{@project.repository&.updated_at.to_i}"
+      json_hash = Rails.cache.fetch(cache_key) do
+        ProjectSerializer.new(@project).as_json
+      end
+      render json: json_hash
+    end
   end
 
   def sourcerank
