@@ -3,6 +3,12 @@
 class ProjectUsageController < ApplicationController
   before_action :find_project
   def show
+    if @project.dependents_count > 10_000
+      @too_big = true
+      @total = @project.dependents_count
+      return
+    end
+
     @all_counts = @project.dependents.group("dependencies.requirements").count.select { |k, _v| k.present? }
     @total = @all_counts.sum { |_k, v| v }
     if @all_counts.any?
