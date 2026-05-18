@@ -199,14 +199,12 @@ Rails.application.routes.draw do
   post "/:platform/:name/suggestions", to: "project_suggestions#create", constraints: { name: /.*/ }
 
   # project routes
-  get "/:platform/:name/top_dependent_repos", to: "projects#top_dependent_repos", as: :top_dependent_repos, constraints: { name: /.*/ }, defaults: { format: "html" }
   get "/:platform/:name/top_dependent_projects", to: "projects#top_dependent_projects", as: :top_dependent_projects, constraints: { name: /.*/ }, defaults: { format: "html" }
   get "/:platform/:name/:number/dependencies", to: "projects#dependencies", constraints: { number: /.*/, name: /.*/ }, as: :version_dependencies
 
   post "/:platform/:name/sync", to: "projects#sync", constraints: { name: /.*/ }, as: :sync_project
   post "/:platform/:name/refresh-stats", to: "projects#refresh_stats", constraints: { name: /.*/ }, as: :project_refresh_stats
   get "/:platform/:name/unsubscribe", to: "projects#unsubscribe", constraints: { name: /.*/ }, as: :unsubscribe_project
-  get "/:platform/:name/usage", to: "project_usage#show", as: :project_usage, constraints: { name: /.*/ }, defaults: { format: "html" }
   post "/:platform/:name/mute", to: "projects#mute", as: :mute_project, constraints: { name: /.*/ }
   delete "/:platform/:name/unmute", to: "projects#unmute", as: :unmute_project, constraints: { name: /.*/ }
   get "/:platform/:name/tree", to: "tree#show", constraints: { name: PROJECT_CONSTRAINT }, as: :tree

@@ -7,10 +7,8 @@ Disallow: /bitbucket/
 Disallow: /explore/
 Disallow: /search
 Disallow: /login
-Disallow: */usage$
 Disallow: */dependents$
 Disallow: */dependencies$
-Disallow: */top_dependent_repos$
 Disallow: */sourcerank$
 Disallow: */versions$
 Disallow: /auth/

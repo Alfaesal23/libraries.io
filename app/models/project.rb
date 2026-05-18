@@ -696,10 +696,6 @@ class Project < ApplicationRecord
       .offset(offset)
   end
 
-  def dependent_repos_top_ten
-    dependent_repositories_optimized(10)
-  end
-
   def check_status
     return if status_checked_at && status_checked_at > CHECK_STATUS_FREQUENCY_LIMIT.ago
 

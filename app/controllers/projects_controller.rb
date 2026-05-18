@@ -15,7 +15,6 @@ class ProjectsController < ApplicationController
     sync
     tags
     top_dependent_projects
-    top_dependent_repos
     unmute
     unsubscribe
     versions
@@ -133,10 +132,6 @@ class ProjectsController < ApplicationController
 
   def dependencies
     find_version
-    render layout: false
-  end
-
-  def top_dependent_repos
     render layout: false
   end
 
